@@ -23,7 +23,7 @@ window.SITE_CONFIG = {
   /* ---------- Background ------------------------------------------- */
   background: {
     /* CHANGE: background image URL. "" = use the built-in gradient.   */
-    imageUrl: "",
+    imageUrl: "https://cdn.discordapp.com/attachments/1495934459432796362/1541863479248552116/IMG_1613.jpg?ex=6a8f23c3&is=6a8dd243&hm=9aaf9f039a33dfe90de74bc4cbb10945a81a4eb588a6b736ce328180f5e4c2f5&",
 
     /* 0 = invisible, 1 = fully visible                                */
     opacity: 0.9,
