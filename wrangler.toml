@@ -1,0 +1,23 @@
+# ---------------------------------------------------------------------
+# Cloudflare WORKERS configuration  (recommended way to deploy this)
+#
+#   local:   npx wrangler dev        ->  http://localhost:8787
+#   deploy:  npx wrangler deploy
+#
+# Everything in public/ is served as a static asset, and any request that
+# is not a file (/api/resolve, /api/media) is handled by worker.js.
+# ---------------------------------------------------------------------
+name = "tokdrop"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "./public"
+
+# ---------------------------------------------------------------------
+# Deploying as Cloudflare PAGES instead? Nothing to change in the code:
+#   local:   npx wrangler pages dev public --port 8788
+#   deploy:  npx wrangler pages deploy public
+# Pages reads the functions/ folder automatically. In the Pages build
+# settings use: build command (empty), build output directory: public.
+# ---------------------------------------------------------------------

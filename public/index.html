@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- CHANGE ME: page title / description (also set in config.js) -->
+  <title>TokDrop</title>
+  <meta name="description" content="Paste a TikTok link and download the video or the audio." />
+  <meta name="theme-color" content="#070b12" />
+  <meta name="robots" content="noindex" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230ea5b7'/%3E%3Cpath d='M35 12h6c.6 5 3.8 8 8.5 8.5v6C45 26 41.5 24.6 39 22v16.5c0 7.5-6 13.5-13.5 13.5S12 46 12 38.5 18 25 25.5 25c1 0 2 .1 3 .3v6.6a7 7 0 1 0 4.5 6.6V12z' fill='white'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Background layers: fallback gradient + optional image (config.js) + dark overlay -->
+  <div class="bg-fallback"></div>
+  <div class="bg-image" id="bgImage"></div>
+  <div class="bg-overlay"></div>
+
+  <!-- 1. Initial page loading screen -->
+  <div class="boot" id="boot">
+    <div class="boot-inner">
+      <div class="spinner"></div>
+      <p>TokDrop</p>
+    </div>
+  </div>
+
+  <div class="shell">
+    <!-- Minimal navigation -->
+    <nav class="nav">
+      <div class="brand">
+        <!-- CHANGE ME: logo image is set in config.js (logoUrl) -->
+        <div class="brand-mark" id="brandMark">&#9654;</div>
+        <img id="brandLogo" src="" alt="" hidden />
+        <span class="brand-name" id="brandName">TokDrop</span>
+      </div>
+      <div class="nav-links">
+        <a class="link-btn" href="#downloader">Download</a>
+        <button class="icon-btn" id="musicBtn" type="button" aria-label="Toggle background music">&#9835;</button>
+        <button class="icon-btn" id="themeBtn" type="button" aria-label="Toggle dark or light theme">&#9789;</button>
+      </div>
+    </nav>
+
+    <main>
+      <section class="hero">
+        <h1>TokDrop</h1>
+        <p id="tagline">Paste a TikTok link. Get the video.</p>
+      </section>
+
+      <!-- Downloader card: paste link -> process -> download -->
+      <section class="card" id="downloader">
+        <div class="section-head">
+          <h2>Download a TikTok video</h2>
+          <span>no account needed</span>
+        </div>
+
+        <div class="form-row">
+          <input class="input" id="urlInput" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+                 placeholder="https://www.tiktok.com/@username/video/1234567890" aria-label="TikTok video URL" />
+          <button class="btn" id="pasteBtn" type="button">Paste</button>
+          <button class="btn btn-primary" id="downloadBtn" type="button">Download</button>
+        </div>
+
+        <div class="hint-row">
+          <span class="chip">Works with vm.tiktok.com short links</span>
+          <span class="chip">Best available quality</span>
+          <span class="chip">Audio only (MP3)</span>
+        </div>
+
+        <!-- 2. Processing state -->
+        <div class="status" id="status" hidden>
+          <div class="spinner" role="status" aria-live="polite"></div>
+          <div class="status-text" id="statusText"></div>
+        </div>
+        <div class="progress"><div class="progress-bar"></div></div>
+
+        <!-- 5. Error state -->
+        <div class="error-box" id="errorBox" hidden>
+          <h3 id="errorTitle">Something went wrong</h3>
+          <p id="errorText"></p>
+        </div>
+      </section>
+
+      <!-- 3 + 4. Result: preview, metadata and download options -->
+      <section class="card section" id="result" hidden>
+        <div class="section-head">
+          <h2>Your video is ready</h2>
+          <span><a id="sourceLink" href="#" target="_blank" rel="noreferrer">open on TikTok</a></span>
+        </div>
+
+        <div class="result-grid">
+          <div class="player" id="player"></div>
+          <div>
+            <dl class="meta-list" id="metaList"></dl>
+            <div class="download-list" id="downloadList"></div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <p>
+          Download only content you own or have permission to use. Respect TikTok&rsquo;s Terms of Service
+          and the creator&rsquo;s copyright &mdash; this tool is for personal archiving of public videos.
+        </p>
+      </footer>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- CHANGE ME: everything visual/audio is configured in config.js -->
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

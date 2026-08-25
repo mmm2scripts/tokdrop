@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Deploy TokDrop — config &amp; push to GitHub</title>
+  <meta name="robots" content="noindex" />
+  <style>
+/* ------------------------------------------------------------------ */
+/* Theme tokens                                                        */
+/* ------------------------------------------------------------------ */
+:root {
+  --accent: #22d3ee;
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
+  --bg: #070b12;
+  --bg-2: #0b1220;
+  --surface: rgba(16, 23, 38, 0.72);
+  --surface-2: rgba(12, 18, 30, 0.6);
+  --border: rgba(255, 255, 255, 0.1);
+  --text: #e9eef8;
+  --muted: #93a1b8;
+  --danger: #ff6b6b;
+  --ok: #4ade80;
+  --radius: 22px;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  --bg-image: none;
+  --bg-pos: center;
+  --bg-opacity: 0.9;
+  --bg-blur: 4px;
+  --overlay: 0.55;
+}
+
+html[data-theme="light"] {
+  --bg: #f2f5fa;
+  --bg-2: #e7edf6;
+  --surface: rgba(255, 255, 255, 0.85);
+  --surface-2: rgba(255, 255, 255, 0.7);
+  --border: rgba(15, 23, 42, 0.12);
+  --text: #101828;
+  --muted: #5a6a83;
+  --shadow: 0 20px 50px rgba(15, 23, 42, 0.16);
+}
+
+* { box-sizing: border-box; }
+
+html, body { padding: 0; margin: 0; }
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+}
+
+/* ------------------------------------------------------------------ */
+/* Background layers (image + blur + overlay, all from config)          */
+/* ------------------------------------------------------------------ */
+.bg-fallback {
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  background:
+    radial-gradient(900px 600px at 12% -5%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 65%),
+    radial-gradient(800px 700px at 92% 8%, rgba(124, 58, 237, 0.35), transparent 60%),
+    radial-gradient(700px 600px at 60% 110%, rgba(14, 165, 233, 0.28), transparent 60%),
+    linear-gradient(180deg, var(--bg), var(--bg-2));
+}
+
+html[data-theme="light"] .bg-fallback {
+  background:
+    radial-gradient(900px 600px at 12% -5%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 65%),
+    radial-gradient(800px 700px at 92% 8%, rgba(124, 58, 237, 0.16), transparent 60%),
+    linear-gradient(180deg, var(--bg), var(--bg-2));
+}
+
+.bg-image {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background-image: var(--bg-image);
+  background-size: cover;
+  background-position: var(--bg-pos);
+  background-repeat: no-repeat;
+  opacity: var(--bg-opacity);
+  filter: blur(var(--bg-blur));
+  transform: scale(1.06);
+}
+
+.bg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: rgba(3, 7, 16, var(--overlay));
+}
+
+/* ------------------------------------------------------------------ */
+/* Layout                                                              */
+/* ------------------------------------------------------------------ */
+.shell { width: 100%; max-width: 1040px; margin: 0 auto; padding: 0 18px 64px; }
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 0;
+  margin-bottom: 10px;
+  backdrop-filter: blur(14px);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 75%, transparent), transparent);
+}
+
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand img { width: 34px; height: 34px; border-radius: 10px; object-fit: cover; }
+.brand-mark {
+  width: 34px; height: 34px; border-radius: 11px; flex: none;
+  display: grid; place-items: center; font-size: 17px;
+  background: linear-gradient(140deg, var(--accent), #7c3aed);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.brand-name { font-weight: 700; letter-spacing: -0.01em; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-links { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.nav-links a { display: none; }
+@media (min-width: 720px) { .nav-links a { display: inline-flex; } }
+
+.icon-btn {
+  width: 38px; height: 38px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 12px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text);
+  cursor: pointer; font-size: 16px; transition: 0.18s ease;
+}
+.icon-btn:hover { border-color: color-mix(in srgb, var(--accent) 60%, transparent); transform: translateY(-1px); }
+.icon-btn.is-on { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+
+.link-btn {
+  padding: 9px 13px; border-radius: 12px; border: 1px solid transparent;
+  background: transparent; color: var(--muted); text-decoration: none; font-size: 14px;
+}
+.link-btn:hover { color: var(--text); background: var(--surface-2); }
+
+/* ------------------------------------------------------------------ */
+/* Cards & headings                                                    */
+/* ------------------------------------------------------------------ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 22px;
+  backdrop-filter: blur(16px);
+}
+
+.hero { text-align: center; padding: 26px 0 20px; }
+.hero h1 { margin: 0 0 8px; font-size: clamp(1.7rem, 5vw, 2.6rem); letter-spacing: -0.03em; }
+.hero p { margin: 0; color: var(--muted); font-size: clamp(0.95rem, 2.6vw, 1.05rem); }
+
+.section { margin-top: 30px; }
+.section-head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 12px; }
+.section-head h2 { margin: 0; font-size: 1.15rem; letter-spacing: -0.01em; }
+.section-head span { color: var(--muted); font-size: 0.85rem; }
+
+/* ------------------------------------------------------------------ */
+/* Downloader form                                                     */
+/* ------------------------------------------------------------------ */
+.form-row { display: flex; gap: 10px; }
+@media (max-width: 600px) { .form-row { flex-direction: column; } }
+
+.input {
+  flex: 1; min-width: 0;
+  padding: 15px 16px;
+  font-size: 16px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  outline: none;
+  transition: 0.18s ease;
+  font-family: inherit;
+}
+.input::placeholder { color: var(--muted); }
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 14px 20px; font-size: 15px; font-weight: 600;
+  border-radius: 14px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text);
+  cursor: pointer; text-decoration: none; transition: 0.18s ease;
+  font-family: inherit; line-height: 1.1;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+.btn-primary {
+  border: none; color: #04121a; padding: 15px 26px;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #7c3aed));
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+html[data-theme="light"] .btn-primary { color: #04121a; }
+.btn-ghost { background: transparent; }
+.btn-block { width: 100%; }
+
+.hint-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.chip {
+  font-size: 12px; padding: 6px 10px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--muted); background: var(--surface-2);
+}
+
+/* ------------------------------------------------------------------ */
+/* Loading / status / errors                                           */
+/* ------------------------------------------------------------------ */
+.status { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); }
+.status-text { font-size: 14px; color: var(--muted); }
+.status-text strong { color: var(--text); display: block; font-size: 15px; }
+
+.spinner {
+  width: 20px; height: 20px; flex: none;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--text) 22%, transparent);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.progress { height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; margin-top: 12px; }
+.progress-bar { height: 100%; width: 35%; border-radius: 999px; background: var(--accent); animation: slide 1.4s ease-in-out infinite; }
+@keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(320%); } }
+
+.error-box { margin-top: 16px; padding: 16px; border-radius: 16px; background: rgba(255, 107, 107, 0.1); border: 1px solid rgba(255, 107, 107, 0.35); }
+.error-box h3 { margin: 0 0 6px; font-size: 15px; color: var(--danger); }
+.error-box p { margin: 0; font-size: 14px; color: var(--muted); }
+
+.notice { margin-top: 14px; font-size: 13px; color: var(--muted); display: flex; gap: 8px; }
+.notice b { color: var(--text); }
+
+/* ------------------------------------------------------------------ */
+/* Result                                                              */
+/* ------------------------------------------------------------------ */
+.result-grid { display: grid; grid-template-columns: 1fr; gap: 18px; }
+@media (min-width: 820px) { .result-grid { grid-template-columns: 1.05fr 1fr; align-items: start; } }
+
+.player { border-radius: 18px; overflow: hidden; border: 1px solid var(--border); background: #000; aspect-ratio: 9 / 14; max-height: 70vh; display: grid; place-items: center; }
+.player video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.player audio { width: calc(100% - 24px); }
+.player-cover { width: 100%; height: 100%; object-fit: cover; }
+
+.meta-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.meta-item { padding: 12px 13px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); }
+.meta-item dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 4px; }
+.meta-item dd { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.full { grid-column: 1 / -1; }
+
+.download-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.download-row {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  border-radius: 16px; border: 1px solid var(--border); background: var(--surface-2);
+}
+.download-row .info { min-width: 0; flex: 1; }
+.download-row .info b { display: block; font-size: 14px; }
+.download-row .info span { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.tag-muted { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--muted); }
+
+/* ------------------------------------------------------------------ */
+/* Settings + deploy forms                                             */
+/* ------------------------------------------------------------------ */
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.field .help { font-size: 12px; color: var(--muted); text-transform: none; letter-spacing: 0; font-weight: 400; }
+.range-row { display: flex; align-items: center; gap: 10px; }
+.range-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+.range-row output { font-size: 12px; color: var(--muted); min-width: 42px; text-align: right; }
+
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); }
+.switch-row span { font-size: 14px; }
+.switch { position: relative; width: 46px; height: 26px; flex: none; border-radius: 999px; border: 1px solid var(--border); background: color-mix(in srgb, var(--text) 14%, transparent); cursor: pointer; transition: 0.2s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--text); transition: 0.2s; }
+.switch.on { background: var(--accent); border-color: var(--accent); }
+.switch.on::after { left: 23px; background: #05121a; }
+
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+pre {
+  margin: 10px 0 0; padding: 14px; border-radius: 14px; overflow-x: auto;
+  background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border);
+  font-size: 12.5px; color: #cbd5e1;
+}
+html[data-theme="light"] pre { background: rgba(15, 23, 42, 0.06); color: #334155; }
+code.inline { padding: 2px 6px; border-radius: 6px; background: color-mix(in srgb, var(--text) 10%, transparent); font-size: 0.9em; }
+
+.steps { counter-reset: step; display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.steps li { counter-increment: step; position: relative; padding-left: 42px; font-size: 14px; color: var(--muted); }
+.steps li::before {
+  content: counter(step); position: absolute; left: 0; top: -1px;
+  width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700;
+}
+.steps li b { color: var(--text); display: block; margin-bottom: 2px; font-size: 14px; }
+
+.footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); text-align: center; }
+
+/* Boot overlay shown while the page loads */
+.boot {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; gap: 14px;
+  background: var(--bg); transition: opacity 0.35s ease;
+}
+.boot.hidden { opacity: 0; pointer-events: none; }
+.boot-inner { display: grid; justify-items: center; gap: 12px; }
+.boot-inner .spinner { width: 28px; height: 28px; border-width: 3px; }
+.boot-inner p { margin: 0; font-size: 13px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px);
+  z-index: 70; padding: 12px 18px; border-radius: 14px; font-size: 14px;
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow);
+  opacity: 0; transition: 0.25s ease; max-width: calc(100% - 32px);
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.ok { border-color: color-mix(in srgb, var(--ok) 60%, transparent); }
+.toast.err { border-color: color-mix(in srgb, var(--danger) 60%, transparent); }
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* deploy-page only styling */
+.log { margin: 12px 0 0; padding: 14px; border-radius: 14px; background: rgba(0,0,0,.35); border: 1px solid var(--border); max-height: 260px; overflow: auto; font-size: 12.5px; white-space: pre-wrap; }
+.tabs { display: flex; gap: 8px; margin: 18px 0 14px; flex-wrap: wrap; }
+.pill { font-size: 13px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); cursor: default; }
+.pill b { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="bg-fallback"></div>
+  <div class="bg-image" id="bgImage"></div>
+  <div class="bg-overlay"></div>
+
+  <div class="shell">
+    <nav class="nav">
+      <div class="brand">
+        <div class="brand-mark">&#9881;</div>
+        <span class="brand-name">TokDrop &middot; deploy</span>
+      </div>
+      <div class="nav-links">
+        <a class="link-btn" href="index.html">Open the site</a>
+        <button class="icon-btn" id="themeBtn" type="button" aria-label="Toggle dark or light theme">&#9789;</button>
+      </div>
+    </nav>
+
+    <main>
+      <section class="hero">
+        <h1>Configure &amp; publish</h1>
+        <p>One page, three steps: style the site, push it to GitHub, connect Cloudflare.</p>
+      </section>
+
+      <div class="tabs">
+        <span class="pill"><b>1</b> Configure</span>
+        <span class="pill"><b>2</b> Push to GitHub</span>
+        <span class="pill"><b>3</b> Connect Cloudflare</span>
+      </div>
+
+      <!-- ============ 1. CONFIG ============ -->
+      <section class="card" id="config">
+        <div class="section-head">
+          <h2>1. Configure the site</h2>
+          <span>saved into public/config.js</span>
+        </div>
+
+        <div class="grid-2">
+          <div class="field">
+            <label>Site title</label>
+            <input class="input" id="siteTitle" value="TokDrop" />
+          </div>
+          <div class="field">
+            <label>Tagline</label>
+            <input class="input" id="tagline" value="Paste a TikTok link. Get the video." />
+          </div>
+          <div class="field">
+            <label>Logo URL</label>
+            <input class="input" id="logoUrl" placeholder="https://example.com/logo.png" value="" />
+          </div>
+          <div class="field">
+            <label>Accent colour</label>
+            <div class="range-row">
+              <input class="input" type="color" id="accentPick" style="padding:6px;height:48px;cursor:pointer" value="#22d3ee" />
+              <input class="input" id="accentColor" value="#22d3ee" />
+            </div>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:16px">
+          <label>Background image URL</label>
+          <input class="input" id="bgImageUrl" placeholder="https://example.com/background.jpg (empty = gradient)" value="" />
+        </div>
+
+        <div class="grid-2" style="margin-top:14px">
+          <div class="field">
+            <label>Background opacity</label>
+            <div class="range-row"><input type="range" id="bgOpacity" min="0" max="1" step="0.05" value="0.9" /><output id="bgOpacityOut">0.9</output></div>
+          </div>
+          <div class="field">
+            <label>Background blur (px)</label>
+            <div class="range-row"><input type="range" id="bgBlur" min="0" max="30" step="1" value="4" /><output id="bgBlurOut">4px</output></div>
+          </div>
+          <div class="field">
+            <label>Overlay darkness</label>
+            <div class="range-row"><input type="range" id="overlayDarkness" min="0" max="0.95" step="0.05" value="0.55" /><output id="overlayDarknessOut">0.55</output></div>
+          </div>
+          <div class="field">
+            <label>Background position</label>
+            <select class="input" id="bgPosition">
+              <option value="center" selected>center</option><option value="top">top</option><option value="bottom">bottom</option><option value="left">left</option><option value="right">right</option><option value="top left">top left</option><option value="top right">top right</option><option value="bottom left">bottom left</option><option value="bottom right">bottom right</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:16px">
+          <div class="field">
+            <label>Music URL (direct .mp3)</label>
+            <input class="input" id="musicUrl" placeholder="https://example.com/song.mp3" value="" />
+          </div>
+          <div class="field">
+            <label>Music volume</label>
+            <div class="range-row"><input type="range" id="musicVolume" min="0" max="1" step="0.05" value="0.35" /><output id="musicVolumeOut">0.35</output></div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:14px">
+          <div class="switch-row"><span>Enable music</span><button type="button" class="switch" id="musicEnabled" aria-label="Enable music"></button></div>
+          <div class="switch-row"><span>Loop music</span><button type="button" class="switch on" id="musicLoop" aria-label="Loop music"></button></div>
+        </div>
+
+        <div class="form-row" style="margin-top:18px">
+          <button class="btn btn-primary" type="button" id="downloadConfig">&#8681; Download config.js</button>
+          <button class="btn" type="button" id="previewConfig">&#9654; Preview on this page</button>
+        </div>
+        <p class="notice"><b>Tip:</b> the values below are pushed to GitHub together with everything else, so you can set them now and change them later by editing <code class="inline">public/config.js</code>.</p>
+      </section>
+
+      <!-- ============ 2. PUSH ============ -->
+      <section class="card section" id="push">
+        <div class="section-head">
+          <h2>2. Push to GitHub</h2>
+          <span>creates a new repository</span>
+        </div>
+
+        <div class="grid-2">
+          <div class="field full">
+            <label>GitHub token <span class="help">— github.com/settings/tokens &rarr; classic token, scope "repo"</span></label>
+            <input class="input" id="token" type="password" autocomplete="off" placeholder="ghp_... or github_pat_..." />
+          </div>
+          <div class="field">
+            <label>New repository name</label>
+            <input class="input" id="repoName" value="tokdrop" />
+          </div>
+          <div class="field">
+            <label>Owner <span class="help">(blank = your account)</span></label>
+            <input class="input" id="owner" placeholder="username or organisation" />
+          </div>
+          <div class="field">
+            <label>Branch</label>
+            <input class="input" id="branch" value="main" />
+          </div>
+          <div class="field">
+            <label>Visibility</label>
+            <div class="switch-row"><span id="visibilityLabel">Private repository</span><button type="button" class="switch on" id="isPrivate" aria-label="Toggle visibility"></button></div>
+          </div>
+        </div>
+
+        <div class="form-row" style="margin-top:18px">
+          <button class="btn btn-primary" type="button" id="pushBtn">Create repo &amp; push</button>
+        </div>
+
+        <div class="status" id="status" hidden>
+          <div class="spinner"></div>
+          <div class="status-text" id="statusText"><strong>Working…</strong></div>
+        </div>
+
+        <div class="error-box" id="errorBox" hidden>
+          <h3 id="errorTitle">Something went wrong</h3>
+          <p id="errorText"></p>
+        </div>
+
+        <div class="log" id="log" hidden></div>
+
+        <p class="notice"><b>Token safety:</b> the token stays in this browser tab and is sent only to api.github.com. Nothing is stored anywhere.</p>
+      </section>
+
+      <!-- ============ 3. CLOUDFLARE ============ -->
+      <section class="card section" id="cloudflare">
+        <div class="section-head">
+          <h2>3. Connect Cloudflare (Workers or Pages)</h2>
+          <span>once, then every push redeploys</span>
+        </div>
+        <ol class="steps">
+          <li><b>Workers &amp; Pages &rarr; Create &rarr; Workers &rarr; Import a repository</b>
+            (recommended). Pick the repo and branch, then set:
+            Root directory <i>(empty)</i> &middot; Build command <i>(empty)</i> &middot;
+            Deploy command <code class="inline">npx wrangler deploy</code>.
+            Live on <code class="inline">https://&lt;name&gt;.&lt;you&gt;.workers.dev</code>.</li>
+          <li><b>Or Pages &rarr; Connect to Git</b> if you prefer Pages:
+            Framework preset <i>None</i> &middot; Build command <i>(empty)</i> &middot;
+            Build output directory <code class="inline">public</code> &middot; Root directory <i>(empty)</i>.
+            Live on <code class="inline">https://&lt;project&gt;.pages.dev</code>.</li>
+          <li><b>Nothing else to configure.</b> <code class="inline">wrangler.toml</code> already points at
+            <code class="inline">worker.js</code> and serves <code class="inline">public/</code> as static assets, and
+            <code class="inline">functions/api/*.js</code> makes the same routes work on Pages.</li>
+          <li><b>After publishing</b> delete <code class="inline">public/deploy.html</code> from the repo if you do not want other people to see this page.</li>
+        </ol>
+        <pre># local preview (Workers)
+npx wrangler dev
+
+# local preview (Pages)
+npx wrangler pages dev public --port 8788
+
+# deploy without GitHub
+npx wrangler deploy</pre>
+      </section>
+
+      <footer class="footer">
+        <p>Respect TikTok's Terms of Service and creators' copyright. Only download content you own or are allowed to use.</p>
+      </footer>
+    </main>
+  </div>
+
+  <!-- every project file, so this page can push the whole build on its own -->
+  <script id="project-files" type="application/json">[{"path":"public/index.html","content":"\u003c!DOCTYPE html>\n\u003chtml lang=\"en\" data-theme=\"dark\">\n\u003chead>\n  \u003cmeta charset=\"utf-8\" />\n  \u003cmeta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  \u003c!-- CHANGE ME: page title / description (also set in config.js) -->\n  \u003ctitle>TokDrop\u003c/title>\n  \u003cmeta name=\"description\" content=\"Paste a TikTok link and download the video or the audio.\" />\n  \u003cmeta name=\"theme-color\" content=\"#070b12\" />\n  \u003cmeta name=\"robots\" content=\"noindex\" />\n  \u003clink rel=\"icon\" href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230ea5b7'/%3E%3Cpath d='M35 12h6c.6 5 3.8 8 8.5 8.5v6C45 26 41.5 24.6 39 22v16.5c0 7.5-6 13.5-13.5 13.5S12 46 12 38.5 18 25 25.5 25c1 0 2 .1 3 .3v6.6a7 7 0 1 0 4.5 6.6V12z' fill='white'/%3E%3C/svg%3E\" />\n  \u003clink rel=\"stylesheet\" href=\"styles.css\" />\n\u003c/head>\n\u003cbody>\n  \u003c!-- Background layers: fallback gradient + optional image (config.js) + dark overlay -->\n  \u003cdiv class=\"bg-fallback\">\u003c/div>\n  \u003cdiv class=\"bg-image\" id=\"bgImage\">\u003c/div>\n  \u003cdiv class=\"bg-overlay\">\u003c/div>\n\n  \u003c!-- 1. Initial page loading screen -->\n  \u003cdiv class=\"boot\" id=\"boot\">\n    \u003cdiv class=\"boot-inner\">\n      \u003cdiv class=\"spinner\">\u003c/div>\n      \u003cp>TokDrop\u003c/p>\n    \u003c/div>\n  \u003c/div>\n\n  \u003cdiv class=\"shell\">\n    \u003c!-- Minimal navigation -->\n    \u003cnav class=\"nav\">\n      \u003cdiv class=\"brand\">\n        \u003c!-- CHANGE ME: logo image is set in config.js (logoUrl) -->\n        \u003cdiv class=\"brand-mark\" id=\"brandMark\">&#9654;\u003c/div>\n        \u003cimg id=\"brandLogo\" src=\"\" alt=\"\" hidden />\n        \u003cspan class=\"brand-name\" id=\"brandName\">TokDrop\u003c/span>\n      \u003c/div>\n      \u003cdiv class=\"nav-links\">\n        \u003ca class=\"link-btn\" href=\"#downloader\">Download\u003c/a>\n        \u003cbutton class=\"icon-btn\" id=\"musicBtn\" type=\"button\" aria-label=\"Toggle background music\">&#9835;\u003c/button>\n        \u003cbutton class=\"icon-btn\" id=\"themeBtn\" type=\"button\" aria-label=\"Toggle dark or light theme\">&#9789;\u003c/button>\n      \u003c/div>\n    \u003c/nav>\n\n    \u003cmain>\n      \u003csection class=\"hero\">\n        \u003ch1>TokDrop\u003c/h1>\n        \u003cp id=\"tagline\">Paste a TikTok link. Get the video.\u003c/p>\n      \u003c/section>\n\n      \u003c!-- Downloader card: paste link -> process -> download -->\n      \u003csection class=\"card\" id=\"downloader\">\n        \u003cdiv class=\"section-head\">\n          \u003ch2>Download a TikTok video\u003c/h2>\n          \u003cspan>no account needed\u003c/span>\n        \u003c/div>\n\n        \u003cdiv class=\"form-row\">\n          \u003cinput class=\"input\" id=\"urlInput\" type=\"url\" inputmode=\"url\" autocomplete=\"off\" spellcheck=\"false\"\n                 placeholder=\"https://www.tiktok.com/@username/video/1234567890\" aria-label=\"TikTok video URL\" />\n          \u003cbutton class=\"btn\" id=\"pasteBtn\" type=\"button\">Paste\u003c/button>\n          \u003cbutton class=\"btn btn-primary\" id=\"downloadBtn\" type=\"button\">Download\u003c/button>\n        \u003c/div>\n\n        \u003cdiv class=\"hint-row\">\n          \u003cspan class=\"chip\">Works with vm.tiktok.com short links\u003c/span>\n          \u003cspan class=\"chip\">Best available quality\u003c/span>\n          \u003cspan class=\"chip\">Audio only (MP3)\u003c/span>\n        \u003c/div>\n\n        \u003c!-- 2. Processing state -->\n        \u003cdiv class=\"status\" id=\"status\" hidden>\n          \u003cdiv class=\"spinner\" role=\"status\" aria-live=\"polite\">\u003c/div>\n          \u003cdiv class=\"status-text\" id=\"statusText\">\u003c/div>\n        \u003c/div>\n        \u003cdiv class=\"progress\">\u003cdiv class=\"progress-bar\">\u003c/div>\u003c/div>\n\n        \u003c!-- 5. Error state -->\n        \u003cdiv class=\"error-box\" id=\"errorBox\" hidden>\n          \u003ch3 id=\"errorTitle\">Something went wrong\u003c/h3>\n          \u003cp id=\"errorText\">\u003c/p>\n        \u003c/div>\n      \u003c/section>\n\n      \u003c!-- 3 + 4. Result: preview, metadata and download options -->\n      \u003csection class=\"card section\" id=\"result\" hidden>\n        \u003cdiv class=\"section-head\">\n          \u003ch2>Your video is ready\u003c/h2>\n          \u003cspan>\u003ca id=\"sourceLink\" href=\"#\" target=\"_blank\" rel=\"noreferrer\">open on TikTok\u003c/a>\u003c/span>\n        \u003c/div>\n\n        \u003cdiv class=\"result-grid\">\n          \u003cdiv class=\"player\" id=\"player\">\u003c/div>\n          \u003cdiv>\n            \u003cdl class=\"meta-list\" id=\"metaList\">\u003c/dl>\n            \u003cdiv class=\"download-list\" id=\"downloadList\">\u003c/div>\n          \u003c/div>\n        \u003c/div>\n      \u003c/section>\n\n      \u003cfooter class=\"footer\">\n        \u003cp>\n          Download only content you own or have permission to use. Respect TikTok&rsquo;s Terms of Service\n          and the creator&rsquo;s copyright &mdash; this tool is for personal archiving of public videos.\n        \u003c/p>\n      \u003c/footer>\n    \u003c/main>\n  \u003c/div>\n\n  \u003cdiv class=\"toast\" id=\"toast\">\u003c/div>\n\n  \u003c!-- CHANGE ME: everything visual/audio is configured in config.js -->\n  \u003cscript src=\"config.js\">\u003c/script>\n  \u003cscript src=\"app.js\">\u003c/script>\n\u003c/body>\n\u003c/html>\n"},{"path":"public/styles.css","content":"/* ------------------------------------------------------------------ */\n/* Theme tokens                                                        */\n/* ------------------------------------------------------------------ */\n:root {\n  --accent: #22d3ee;\n  --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);\n  --bg: #070b12;\n  --bg-2: #0b1220;\n  --surface: rgba(16, 23, 38, 0.72);\n  --surface-2: rgba(12, 18, 30, 0.6);\n  --border: rgba(255, 255, 255, 0.1);\n  --text: #e9eef8;\n  --muted: #93a1b8;\n  --danger: #ff6b6b;\n  --ok: #4ade80;\n  --radius: 22px;\n  --shadow: 0 24px 60px rgba(0, 0, 0, 0.45);\n  --bg-image: none;\n  --bg-pos: center;\n  --bg-opacity: 0.9;\n  --bg-blur: 4px;\n  --overlay: 0.55;\n}\n\nhtml[data-theme=\"light\"] {\n  --bg: #f2f5fa;\n  --bg-2: #e7edf6;\n  --surface: rgba(255, 255, 255, 0.85);\n  --surface-2: rgba(255, 255, 255, 0.7);\n  --border: rgba(15, 23, 42, 0.12);\n  --text: #101828;\n  --muted: #5a6a83;\n  --shadow: 0 20px 50px rgba(15, 23, 42, 0.16);\n}\n\n* { box-sizing: border-box; }\n\nhtml, body { padding: 0; margin: 0; }\n\nbody {\n  font-family: ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif;\n  background: var(--bg);\n  color: var(--text);\n  min-height: 100vh;\n  -webkit-font-smoothing: antialiased;\n  line-height: 1.5;\n}\n\n/* ------------------------------------------------------------------ */\n/* Background layers (image + blur + overlay, all from config)          */\n/* ------------------------------------------------------------------ */\n.bg-fallback {\n  position: fixed;\n  inset: 0;\n  z-index: -3;\n  background:\n    radial-gradient(900px 600px at 12% -5%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 65%),\n    radial-gradient(800px 700px at 92% 8%, rgba(124, 58, 237, 0.35), transparent 60%),\n    radial-gradient(700px 600px at 60% 110%, rgba(14, 165, 233, 0.28), transparent 60%),\n    linear-gradient(180deg, var(--bg), var(--bg-2));\n}\n\nhtml[data-theme=\"light\"] .bg-fallback {\n  background:\n    radial-gradient(900px 600px at 12% -5%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 65%),\n    radial-gradient(800px 700px at 92% 8%, rgba(124, 58, 237, 0.16), transparent 60%),\n    linear-gradient(180deg, var(--bg), var(--bg-2));\n}\n\n.bg-image {\n  position: fixed;\n  inset: 0;\n  z-index: -2;\n  background-image: var(--bg-image);\n  background-size: cover;\n  background-position: var(--bg-pos);\n  background-repeat: no-repeat;\n  opacity: var(--bg-opacity);\n  filter: blur(var(--bg-blur));\n  transform: scale(1.06);\n}\n\n.bg-overlay {\n  position: fixed;\n  inset: 0;\n  z-index: -1;\n  background: rgba(3, 7, 16, var(--overlay));\n}\n\n/* ------------------------------------------------------------------ */\n/* Layout                                                              */\n/* ------------------------------------------------------------------ */\n.shell { width: 100%; max-width: 1040px; margin: 0 auto; padding: 0 18px 64px; }\n\n.nav {\n  position: sticky;\n  top: 0;\n  z-index: 20;\n  display: flex;\n  align-items: center;\n  gap: 14px;\n  padding: 14px 0;\n  margin-bottom: 10px;\n  backdrop-filter: blur(14px);\n  background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 75%, transparent), transparent);\n}\n\n.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }\n.brand img { width: 34px; height: 34px; border-radius: 10px; object-fit: cover; }\n.brand-mark {\n  width: 34px; height: 34px; border-radius: 11px; flex: none;\n  display: grid; place-items: center; font-size: 17px;\n  background: linear-gradient(140deg, var(--accent), #7c3aed);\n  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 40%, transparent);\n}\n.brand-name { font-weight: 700; letter-spacing: -0.01em; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.nav-links { margin-left: auto; display: flex; align-items: center; gap: 6px; }\n.nav-links a { display: none; }\n@media (min-width: 720px) { .nav-links a { display: inline-flex; } }\n\n.icon-btn {\n  width: 38px; height: 38px; flex: none;\n  display: grid; place-items: center;\n  border-radius: 12px; border: 1px solid var(--border);\n  background: var(--surface-2); color: var(--text);\n  cursor: pointer; font-size: 16px; transition: 0.18s ease;\n}\n.icon-btn:hover { border-color: color-mix(in srgb, var(--accent) 60%, transparent); transform: translateY(-1px); }\n.icon-btn.is-on { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }\n\n.link-btn {\n  padding: 9px 13px; border-radius: 12px; border: 1px solid transparent;\n  background: transparent; color: var(--muted); text-decoration: none; font-size: 14px;\n}\n.link-btn:hover { color: var(--text); background: var(--surface-2); }\n\n/* ------------------------------------------------------------------ */\n/* Cards & headings                                                    */\n/* ------------------------------------------------------------------ */\n.card {\n  background: var(--surface);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  box-shadow: var(--shadow);\n  padding: 22px;\n  backdrop-filter: blur(16px);\n}\n\n.hero { text-align: center; padding: 26px 0 20px; }\n.hero h1 { margin: 0 0 8px; font-size: clamp(1.7rem, 5vw, 2.6rem); letter-spacing: -0.03em; }\n.hero p { margin: 0; color: var(--muted); font-size: clamp(0.95rem, 2.6vw, 1.05rem); }\n\n.section { margin-top: 30px; }\n.section-head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 12px; }\n.section-head h2 { margin: 0; font-size: 1.15rem; letter-spacing: -0.01em; }\n.section-head span { color: var(--muted); font-size: 0.85rem; }\n\n/* ------------------------------------------------------------------ */\n/* Downloader form                                                     */\n/* ------------------------------------------------------------------ */\n.form-row { display: flex; gap: 10px; }\n@media (max-width: 600px) { .form-row { flex-direction: column; } }\n\n.input {\n  flex: 1; min-width: 0;\n  padding: 15px 16px;\n  font-size: 16px;\n  color: var(--text);\n  background: var(--surface-2);\n  border: 1px solid var(--border);\n  border-radius: 14px;\n  outline: none;\n  transition: 0.18s ease;\n  font-family: inherit;\n}\n.input::placeholder { color: var(--muted); }\n.input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }\n\n.btn {\n  display: inline-flex; align-items: center; justify-content: center; gap: 8px;\n  padding: 14px 20px; font-size: 15px; font-weight: 600;\n  border-radius: 14px; border: 1px solid var(--border);\n  background: var(--surface-2); color: var(--text);\n  cursor: pointer; text-decoration: none; transition: 0.18s ease;\n  font-family: inherit; line-height: 1.1;\n}\n.btn:hover { transform: translateY(-1px); }\n.btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }\n.btn-primary {\n  border: none; color: #04121a; padding: 15px 26px;\n  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #7c3aed));\n  box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 35%, transparent);\n}\nhtml[data-theme=\"light\"] .btn-primary { color: #04121a; }\n.btn-ghost { background: transparent; }\n.btn-block { width: 100%; }\n\n.hint-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }\n.chip {\n  font-size: 12px; padding: 6px 10px; border-radius: 999px;\n  border: 1px solid var(--border); color: var(--muted); background: var(--surface-2);\n}\n\n/* ------------------------------------------------------------------ */\n/* Loading / status / errors                                           */\n/* ------------------------------------------------------------------ */\n.status { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); }\n.status-text { font-size: 14px; color: var(--muted); }\n.status-text strong { color: var(--text); display: block; font-size: 15px; }\n\n.spinner {\n  width: 20px; height: 20px; flex: none;\n  border-radius: 50%;\n  border: 2px solid color-mix(in srgb, var(--text) 22%, transparent);\n  border-top-color: var(--accent);\n  animation: spin 0.8s linear infinite;\n}\n@keyframes spin { to { transform: rotate(360deg); } }\n\n.progress { height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--text) 12%, transparent); overflow: hidden; margin-top: 12px; }\n.progress-bar { height: 100%; width: 35%; border-radius: 999px; background: var(--accent); animation: slide 1.4s ease-in-out infinite; }\n@keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(320%); } }\n\n.error-box { margin-top: 16px; padding: 16px; border-radius: 16px; background: rgba(255, 107, 107, 0.1); border: 1px solid rgba(255, 107, 107, 0.35); }\n.error-box h3 { margin: 0 0 6px; font-size: 15px; color: var(--danger); }\n.error-box p { margin: 0; font-size: 14px; color: var(--muted); }\n\n.notice { margin-top: 14px; font-size: 13px; color: var(--muted); display: flex; gap: 8px; }\n.notice b { color: var(--text); }\n\n/* ------------------------------------------------------------------ */\n/* Result                                                              */\n/* ------------------------------------------------------------------ */\n.result-grid { display: grid; grid-template-columns: 1fr; gap: 18px; }\n@media (min-width: 820px) { .result-grid { grid-template-columns: 1.05fr 1fr; align-items: start; } }\n\n.player { border-radius: 18px; overflow: hidden; border: 1px solid var(--border); background: #000; aspect-ratio: 9 / 14; max-height: 70vh; display: grid; place-items: center; }\n.player video { width: 100%; height: 100%; object-fit: contain; display: block; }\n.player audio { width: calc(100% - 24px); }\n.player-cover { width: 100%; height: 100%; object-fit: cover; }\n\n.meta-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }\n.meta-item { padding: 12px 13px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); }\n.meta-item dt { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 4px; }\n.meta-item dd { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }\n.full { grid-column: 1 / -1; }\n\n.download-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }\n.download-row {\n  display: flex; align-items: center; gap: 12px; padding: 12px 14px;\n  border-radius: 16px; border: 1px solid var(--border); background: var(--surface-2);\n}\n.download-row .info { min-width: 0; flex: 1; }\n.download-row .info b { display: block; font-size: 14px; }\n.download-row .info span { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }\n.tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }\n.tag-muted { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--muted); }\n\n/* ------------------------------------------------------------------ */\n/* Settings + deploy forms                                             */\n/* ------------------------------------------------------------------ */\n.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }\n@media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }\n\n.field { display: flex; flex-direction: column; gap: 6px; }\n.field label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }\n.field .help { font-size: 12px; color: var(--muted); text-transform: none; letter-spacing: 0; font-weight: 400; }\n.range-row { display: flex; align-items: center; gap: 10px; }\n.range-row input[type=\"range\"] { flex: 1; accent-color: var(--accent); }\n.range-row output { font-size: 12px; color: var(--muted); min-width: 42px; text-align: right; }\n\n.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); }\n.switch-row span { font-size: 14px; }\n.switch { position: relative; width: 46px; height: 26px; flex: none; border-radius: 999px; border: 1px solid var(--border); background: color-mix(in srgb, var(--text) 14%, transparent); cursor: pointer; transition: 0.2s; }\n.switch::after { content: \"\"; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--text); transition: 0.2s; }\n.switch.on { background: var(--accent); border-color: var(--accent); }\n.switch.on::after { left: 23px; background: #05121a; }\n\ncode, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }\npre {\n  margin: 10px 0 0; padding: 14px; border-radius: 14px; overflow-x: auto;\n  background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border);\n  font-size: 12.5px; color: #cbd5e1;\n}\nhtml[data-theme=\"light\"] pre { background: rgba(15, 23, 42, 0.06); color: #334155; }\ncode.inline { padding: 2px 6px; border-radius: 6px; background: color-mix(in srgb, var(--text) 10%, transparent); font-size: 0.9em; }\n\n.steps { counter-reset: step; display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }\n.steps li { counter-increment: step; position: relative; padding-left: 42px; font-size: 14px; color: var(--muted); }\n.steps li::before {\n  content: counter(step); position: absolute; left: 0; top: -1px;\n  width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center;\n  background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 700;\n}\n.steps li b { color: var(--text); display: block; margin-bottom: 2px; font-size: 14px; }\n\n.footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); text-align: center; }\n\n/* Boot overlay shown while the page loads */\n.boot {\n  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; gap: 14px;\n  background: var(--bg); transition: opacity 0.35s ease;\n}\n.boot.hidden { opacity: 0; pointer-events: none; }\n.boot-inner { display: grid; justify-items: center; gap: 12px; }\n.boot-inner .spinner { width: 28px; height: 28px; border-width: 3px; }\n.boot-inner p { margin: 0; font-size: 13px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }\n\n.toast {\n  position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 20px);\n  z-index: 70; padding: 12px 18px; border-radius: 14px; font-size: 14px;\n  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow);\n  opacity: 0; transition: 0.25s ease; max-width: calc(100% - 32px);\n}\n.toast.show { opacity: 1; transform: translate(-50%, 0); }\n.toast.ok { border-color: color-mix(in srgb, var(--ok) 60%, transparent); }\n.toast.err { border-color: color-mix(in srgb, var(--danger) 60%, transparent); }\n\n.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }\n"},{"path":"public/app.js","content":"/* =====================================================================\n   TikTok downloader - front-end (no framework, no build step)\n   ---------------------------------------------------------------------\n   You should not need to edit this file.\n     * colours / background / logo / music  ->  config.js\n     * server side logic                    ->  functions/api/*.js\n   ===================================================================== */\n(function () {\n  \"use strict\";\n\n  var CONFIG = window.SITE_CONFIG || {};\n  var BG = CONFIG.background || {};\n  var MUSIC = CONFIG.music || {};\n\n  /* ---------------- helpers ---------------- */\n  function $(id) { return document.getElementById(id); }\n  function esc(value) {\n    if (value === null || value === undefined) return \"\";\n    return String(value)\n      .replace(/&/g, \"&amp;\").replace(/\u003c/g, \"&lt;\").replace(/>/g, \"&gt;\")\n      .replace(/\"/g, \"&quot;\").replace(/'/g, \"&#39;\");\n  }\n  function fmtDuration(seconds) {\n    if (!seconds) return \"-\";\n    var s = Math.round(seconds);\n    var m = Math.floor(s / 60);\n    s = s % 60;\n    return m + \":\" + (s \u003c 10 ? \"0\" : \"\") + s;\n  }\n  function fmtNumber(value) {\n    if (value === null || value === undefined || value === \"\") return \"-\";\n    var n = Number(value);\n    if (!isFinite(n)) return String(value);\n    if (n >= 1000000) return (n / 1000000).toFixed(1) + \"M\";\n    if (n >= 1000) return (n / 1000).toFixed(1) + \"K\";\n    return String(n);\n  }\n  function fmtSize(bytes) {\n    if (!bytes) return \"\";\n    if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + \" MB\";\n    return Math.max(1, Math.round(bytes / 1024)) + \" KB\";\n  }\n  var toastTimer = null;\n  function toast(message, kind) {\n    var el = $(\"toast\");\n    el.textContent = message;\n    el.className = \"toast show \" + (kind || \"\");\n    clearTimeout(toastTimer);\n    toastTimer = setTimeout(function () { el.className = \"toast \" + (kind || \"\"); }, 3200);\n  }\n\n  /* ---------------- 1. config.js -> CSS variables + branding ---------------- */\n  function applyConfig() {\n    var root = document.documentElement;\n    if (CONFIG.accentColor) root.style.setProperty(\"--accent\", CONFIG.accentColor);\n    root.style.setProperty(\"--bg-image\", BG.imageUrl ? 'url(\"' + BG.imageUrl + '\")' : \"none\");\n    root.style.setProperty(\"--bg-opacity\", BG.opacity == null ? \"0.9\" : String(BG.opacity));\n    root.style.setProperty(\"--bg-blur\", (BG.blur || 0) + \"px\");\n    root.style.setProperty(\"--bg-pos\", BG.position || \"center\");\n    root.style.setProperty(\"--overlay\", BG.overlayDarkness == null ? \"0.55\" : String(BG.overlayDarkness));\n\n    if (CONFIG.siteTitle) {\n      document.title = CONFIG.siteTitle;\n      var name = $(\"brandName\");\n      if (name) name.textContent = CONFIG.siteTitle;\n    }\n    var logo = $(\"brandLogo\");\n    var mark = $(\"brandMark\");\n    if (logo && mark && CONFIG.logoUrl) {\n      logo.src = CONFIG.logoUrl;\n      logo.hidden = false;\n      mark.hidden = true;\n    }\n    var tagline = $(\"tagline\");\n    if (tagline && CONFIG.tagline) tagline.textContent = CONFIG.tagline;\n  }\n\n  /* ---------------- 2. boot screen / theme / music ---------------- */\n  function hideBoot() {\n    var boot = $(\"boot\");\n    if (!boot) return;\n    boot.classList.add(\"hidden\");\n    setTimeout(function () { boot.remove(); }, 400);\n  }\n\n  function initTheme() {\n    var saved = null;\n    try { saved = window.localStorage.getItem(\"theme\"); } catch (e) { saved = null; }\n    var prefersLight = window.matchMedia && window.matchMedia(\"(prefers-color-scheme: light)\").matches;\n    var theme = saved || (prefersLight ? \"light\" : \"dark\");\n    document.documentElement.setAttribute(\"data-theme\", theme);\n    var btn = $(\"themeBtn\");\n    if (!btn) return;\n    btn.setAttribute(\"aria-label\", \"Toggle dark / light\");\n    btn.addEventListener(\"click\", function () {\n      var next = document.documentElement.getAttribute(\"data-theme\") === \"light\" ? \"dark\" : \"light\";\n      document.documentElement.setAttribute(\"data-theme\", next);\n      try { window.localStorage.setItem(\"theme\", next); } catch (e) { /* private mode */ }\n    });\n  }\n\n  var audio = null;\n  function initMusic() {\n    var btn = $(\"musicBtn\");\n    if (!btn) return;\n    if (!MUSIC.enabled || !MUSIC.url) { btn.hidden = true; return; }\n\n    audio = new Audio(MUSIC.url);\n    audio.loop = MUSIC.loop !== false;\n    audio.volume = typeof MUSIC.volume === \"number\" ? MUSIC.volume : 0.35;\n    audio.preload = \"none\";\n\n    btn.addEventListener(\"click\", function () {\n      if (!audio) return;\n      if (audio.paused) {\n        audio.play().then(function () {\n          btn.classList.add(\"is-on\");\n          btn.textContent = \"\\u266A\";\n          toast(\"Music on\");\n        }).catch(function () {\n          toast(\"Browser blocked the audio file - check the music URL in config.js\", \"err\");\n        });\n      } else {\n        audio.pause();\n        btn.classList.remove(\"is-on\");\n        btn.textContent = \"\\u266B\";\n        toast(\"Music off\");\n      }\n    });\n  }\n\n  /* ---------------- 3. resolve the link ---------------- */\n  var STAGES = [\n    \"Reading the link\\u2026\",\n    \"Contacting TikTok\\u2026\",\n    \"Fetching the video data\\u2026\",\n    \"Listing every available quality\\u2026\",\n    \"Preparing the preview\\u2026\"\n  ];\n  var stageTimer = null;\n\n  function showStatus(text, detail) {\n    $(\"status\").hidden = false;\n    $(\"statusText\").innerHTML = \"\u003cstrong>\" + esc(text) + \"\u003c/strong>\" + (detail ? esc(detail) : \"\");\n  }\n  function startStages() {\n    var i = 0;\n    showStatus(STAGES[0], \"This usually takes a few seconds.\");\n    clearInterval(stageTimer);\n    stageTimer = setInterval(function () {\n      i = Math.min(i + 1, STAGES.length - 1);\n      showStatus(STAGES[i], \"\");\n    }, 1700);\n  }\n  function stopStages() {\n    clearInterval(stageTimer);\n    stageTimer = null;\n    $(\"status\").hidden = true;\n  }\n  function showError(title, detail) {\n    $(\"errorTitle\").textContent = title;\n    $(\"errorText\").textContent = detail || \"\";\n    $(\"errorBox\").hidden = false;\n  }\n  function hideStatus() {\n    $(\"status\").hidden = true;\n    $(\"errorBox\").hidden = true;\n    $(\"result\").hidden = true;\n  }\n\n  function looksLikeTikTokUrl(value) {\n    return /(^|\\.)tiktok\\.com\\//i.test(value) || /^https?:\\/\\/(vm|vt|m)\\.tiktok\\.com\\//i.test(value);\n  }\n\n  function resolve() {\n    var input = $(\"urlInput\");\n    var url = (input.value || \"\").trim();\n    $(\"errorBox\").hidden = true;\n    $(\"result\").hidden = true;\n\n    if (!url) { showError(\"Paste a TikTok link first.\", \"Copy the link from the TikTok app: Share \\u2192 Copy link.\"); input.focus(); return; }\n    if (!looksLikeTikTokUrl(url)) { showError(\"That is not a TikTok link.\", \"It should look like https://www.tiktok.com/@user/video/123... or a vm.tiktok.com short link.\"); input.focus(); return; }\n\n    var button = $(\"downloadBtn\");\n    button.disabled = true;\n    button.textContent = \"Processing\\u2026\";\n    startStages();\n\n    var finished = false;\n    var timeout = setTimeout(function () {\n      if (finished) return;\n      finished = true;\n      stopStages();\n      button.disabled = false;\n      button.textContent = \"Download\";\n      showError(\"The request took too long.\", \"TikTok did not answer. Try again, and if it keeps failing run this site from your own Cloudflare deployment (see the README).\");\n    }, 45000);\n\n    fetch(\"/api/resolve\", {\n      method: \"POST\",\n      headers: { \"Content-Type\": \"application/json\" },\n      body: JSON.stringify({ url: url })\n    })\n      .then(function (response) { return response.json().then(function (data) { return { status: response.status, data: data }; }); })\n      .then(function (out) {\n        if (finished) return;\n        finished = true;\n        clearTimeout(timeout);\n        stopStages();\n        button.disabled = false;\n        button.textContent = \"Download\";\n        if (!out.data || out.data.ok !== true) {\n          showError((out.data && out.data.error) || \"Could not process this link.\", (out.data && out.data.hint) || \"Only public TikTok videos can be processed.\");\n          return;\n        }\n        renderResult(out.data);\n      })\n      .catch(function () {\n        if (finished) return;\n        finished = true;\n        clearTimeout(timeout);\n        stopStages();\n        button.disabled = false;\n        button.textContent = \"Download\";\n        showError(\"Network error.\", \"The request to /api/resolve failed. Make sure the Cloudflare Functions are deployed (functions/ folder is in the repo root).\");\n      });\n  }\n\n  /* ---------------- 4. render the result ---------------- */\n  function metaItem(label, value, full) {\n    return '\u003cdiv class=\"meta-item' + (full ? \" full\" : \"\") + '\">\u003cdt>' + esc(label) + '\u003c/dt>\u003cdd>' + esc(value || \"-\") + '\u003c/dd>\u003c/div>';\n  }\n\n  function downloadRow(variant) {\n    var tags = '\u003cspan class=\"tag\">' + esc(variant.kind === \"audio\" ? \"Audio\" : \"MP4\") + \"\u003c/span>\";\n    if (variant.watermarked) tags += ' \u003cspan class=\"tag tag-muted\">Watermarked\u003c/span>';\n    return '\u003cdiv class=\"download-row\">' +\n      '\u003cdiv class=\"info\">\u003cb>' + esc(variant.label) + \"\u003c/b>\" +\n      \"\u003cspan>\" + esc(variant.detail || \"\") + (variant.sizeBytes ? \" \\u00B7 \" + fmtSize(variant.sizeBytes) : \"\") + \"\u003c/span>\u003c/div>\" +\n      tags +\n      '\u003ca class=\"btn\" href=\"' + esc(variant.url) + '\" download=\"' + esc(variant.fileName) + '\" data-dl>Download\u003c/a>' +\n      \"\u003c/div>\";\n  }\n\n  function renderResult(data) {\n    var player = $(\"player\");\n    if (data.preview && data.preview.url) {\n      player.innerHTML = '\u003cvideo controls playsinline preload=\"metadata\" poster=\"' + esc(data.cover || \"\") + '\" src=\"' + esc(data.preview.url) + '\">\u003c/video>';\n    } else if (data.cover) {\n      player.innerHTML = '\u003cimg class=\"player-cover\" src=\"' + esc(data.cover) + '\" alt=\"Video cover\">';\n    } else {\n      player.innerHTML = \"\u003cp>No preview available\u003c/p>\";\n    }\n\n    var info = $(\"metaList\");\n    var best = data.best || (data.variants && data.variants[0]);\n    info.innerHTML =\n      metaItem(\"Author\", \"@\" + (data.author ? data.author.uniqueId : \"-\")) +\n      metaItem(\"Duration\", fmtDuration(data.durationSeconds)) +\n      metaItem(\"Best quality\", best ? best.label : \"n/a\") +\n      metaItem(\"Resolution\", best && best.height ? best.width + \" x \" + best.height : \"n/a\") +\n      metaItem(\"Sound\", data.music && data.music.title ? data.music.title : \"Original sound\") +\n      metaItem(\"Audio only\", data.audio ? \"Available (MP3)\" : \"Not available\") +\n      metaItem(\"Plays\", fmtNumber(data.stats ? data.stats.plays : null)) +\n      metaItem(\"Likes\", fmtNumber(data.stats ? data.stats.likes : null)) +\n      metaItem(\"Caption\", data.title, true);\n\n    var list = $(\"downloadList\");\n    var html = \"\";\n    for (var i = 0; i \u003c (data.variants || []).length; i++) html += downloadRow(data.variants[i]);\n    if (data.audio) html += downloadRow(data.audio);\n    list.innerHTML = html;\n\n    $(\"sourceLink\").href = data.pageUrl || \"#\";\n    $(\"result\").hidden = false;\n    $(\"result\").scrollIntoView({ behavior: \"smooth\", block: \"start\" });\n\n    if (data.notes && data.notes.length) {\n      toast(data.notes[0]);\n    }\n  }\n\n  /* ---------------- wiring ---------------- */\n  document.addEventListener(\"DOMContentLoaded\", function () {\n    applyConfig();\n    initTheme();\n    initMusic();\n\n    $(\"downloadBtn\").addEventListener(\"click\", resolve);\n    $(\"urlInput\").addEventListener(\"keydown\", function (event) { if (event.key === \"Enter\") resolve(); });\n    $(\"urlInput\").addEventListener(\"paste\", function () { setTimeout(function () { if ($(\"urlInput\").value) resolve(); }, 120); });\n\n    var pasteBtn = $(\"pasteBtn\");\n    if (pasteBtn) {\n      pasteBtn.addEventListener(\"click\", function () {\n        if (!navigator.clipboard || !navigator.clipboard.readText) { toast(\"Clipboard is not available in this browser\", \"err\"); return; }\n        navigator.clipboard.readText().then(function (text) {\n          $(\"urlInput\").value = (text || \"\").trim();\n          if ($(\"urlInput\").value) resolve();\n        }).catch(function () { toast(\"Allow clipboard access to paste automatically\", \"err\"); });\n      });\n    }\n\n    // \"Preparing download\" state while the browser fetches the file.\n    document.addEventListener(\"click\", function (event) {\n      var link = event.target.closest ? event.target.closest(\"[data-dl]\") : null;\n      if (!link) return;\n      showStatus(\"Preparing download\\u2026\", \"The file is streamed through your own Cloudflare Function.\");\n      setTimeout(function () { stopStages(); }, 2500);\n    });\n\n    window.addEventListener(\"load\", hideBoot);\n    setTimeout(hideBoot, 1200); // safety net\n  });\n})();\n"},{"path":"public/config.js","content":"/* =====================================================================\n   CONFIG.JS  -  the only file you need to edit to change the site.\n   ---------------------------------------------------------------------\n   Save the file, commit, push - Cloudflare redeploys automatically.\n   Every value below is a plain string / number, no build step needed.\n   ===================================================================== */\nwindow.SITE_CONFIG = {\n\n  /* ---------- Branding -------------------------------------------- */\n  /* CHANGE: your site name (shown in the browser tab, nav and hero)   */\n  siteTitle: \"TokDrop\",\n\n  /* CHANGE: the short line under the big title                        */\n  tagline: \"Paste a TikTok link. Get the video.\",\n\n  /* CHANGE: logo image URL (png/svg, square works best).             */\n  /*         Leave \"\" to keep the built-in gradient mark.             */\n  logoUrl: \"\",\n\n  /* CHANGE: accent colour - buttons, links, glows (any CSS colour)   */\n  accentColor: \"#22d3ee\",\n\n  /* ---------- Background ------------------------------------------- */\n  background: {\n    /* CHANGE: background image URL. \"\" = use the built-in gradient.   */\n    imageUrl: \"\",\n\n    /* 0 = invisible, 1 = fully visible                                */\n    opacity: 0.9,\n\n    /* blur in px (0 = sharp)                                          */\n    blur: 4,\n\n    /* any CSS background-position: \"center\", \"top\", \"50% 20%\" ...     */\n    position: \"center\",\n\n    /* dark film on top of everything, 0 - 0.95 (higher = darker)      */\n    overlayDarkness: 0.55\n  },\n\n  /* ---------- Optional background music ---------------------------- */\n  music: {\n    /* CHANGE: set enabled to true and paste a direct .mp3 URL.        */\n    /* Browsers block autoplay, so music starts on the first click     */\n    /* of the music button in the top-right corner.                    */\n    enabled: false,\n\n    url: \"\",\n\n    /* 0 = silent, 1 = full volume                                     */\n    volume: 0.35,\n\n    /* true = restart when the track finishes                          */\n    loop: true\n  }\n};\n"},{"path":"public/robots.txt","content":"User-agent: *\nDisallow: /\n"},{"path":"functions/api/resolve.js","content":"/* =====================================================================\n   /api/resolve  -  Cloudflare Pages Function (runs on YOUR deployment)\n   ---------------------------------------------------------------------\n   Reads a TikTok URL and returns the video metadata plus every download\n   option. It only talks to TikTok's own public endpoints:\n\n     1. short links  -> follow the redirect to the full URL\n     2. /oembed      -> public metadata (no key required)\n     3. the web page -> __UNIVERSAL_DATA_FOR_REHYDRATION__ / SIGI_STATE JSON\n     4. the mobile feed endpoint -> second attempt if the page is blocked\n\n   There is NO third-party / paid API involved.\n   ===================================================================== */\n\nconst DESKTOP_UA =\n  \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36\";\nconst ANDROID_UA =\n  \"com.zhiliaoapp.musically/2023205030 (Linux; U; Android 13; en_US; Pixel 7; Build/TQ3A.230901.001; Cronet/TTNetVersion)\";\nconst TIKTOK = \"https://www.tiktok.com\";\n\nfunction reply(data, status) {\n  return new Response(JSON.stringify(data), {\n    status: status || 200,\n    headers: { \"content-type\": \"application/json; charset=utf-8\", \"cache-control\": \"no-store\" },\n  });\n}\n\nfunction pickString(...values) {\n  for (let i = 0; i \u003c values.length; i++) {\n    const value = values[i];\n    if (typeof value === \"string\" && value.trim()) return value.trim();\n    if (Array.isArray(value) && typeof value[0] === \"string\" && value[0].trim()) return value[0].trim();\n  }\n  return null;\n}\n\nfunction pickNumber(...values) {\n  for (let i = 0; i \u003c values.length; i++) {\n    const value = values[i];\n    const n = typeof value === \"string\" ? Number(value) : value;\n    if (typeof n === \"number\" && isFinite(n) && n > 0) return n;\n  }\n  return null;\n}\n\nfunction extractId(pathname) {\n  const patterns = [/\\/video\\/(\\d{6,})/, /\\/photo\\/(\\d{6,})/, /\\/v\\/(\\d{6,})/, /\\/embed\\/v2\\/(\\d{6,})/];\n  for (let i = 0; i \u003c patterns.length; i++) {\n    const found = pathname.match(patterns[i]);\n    if (found) return found[1];\n  }\n  const trailing = pathname.match(/(\\d{15,})\\/?$/);\n  return trailing ? trailing[1] : null;\n}\n\n/**\n * TikTok returns several CDN addresses per quality. The first two\n * (v16/v19-webapp-prime...) often answer 403 without cookies, while the\n * www.tiktok.com/aweme/v1/play/ entry redirects to an open CDN url.\n */\nfunction preferPlayableUrl(candidates) {\n  const list = [];\n  for (let i = 0; i \u003c candidates.length; i++) {\n    if (typeof candidates[i] === \"string\" && candidates[i].trim()) list.push(candidates[i].trim());\n  }\n  for (let i = 0; i \u003c list.length; i++) {\n    if (list[i].indexOf(\"/aweme/v1/play/\") !== -1) return list[i];\n  }\n  return list[0] || null;\n}\n\n/** Tiny range request used to confirm an address really works before we show it. */\nasync function isReachable(url) {\n  try {\n    const response = await fetch(url, {\n      headers: { \"User-Agent\": DESKTOP_UA, Referer: TIKTOK + \"/\", Range: \"bytes=0-1\" },\n      redirect: \"follow\",\n    });\n    const ok = response.status === 200 || response.status === 206;\n    try { response.body && response.body.cancel(); } catch (error) { /* ignore */ }\n    return ok;\n  } catch (error) {\n    return false;\n  }\n}\n\nfunction safeFileBase(value, fallback) {\n  const cleaned = String(value || fallback)\n    .replace(/[\\\\/:*?\"\u003c>|\\n\\r\\t]+/g, \" \")\n    // keep the file name friendly on every operating system\n    .replace(/[^\\w\\s.\\-]+/g, \"\")\n    .replace(/\\s+/g, \" \")\n    .trim()\n    .slice(0, 60);\n  return cleaned || fallback;\n}\n\nfunction proxyUrl(directUrl, fileName) {\n  return \"/api/media?u=\" + encodeURIComponent(directUrl) + \"&f=\" + encodeURIComponent(fileName) + \"&dl=1\";\n}\n\nfunction variant(input) {\n  return {\n    id: input.id,\n    kind: input.kind,\n    label: input.label,\n    detail: input.detail || \"\",\n    width: input.width || null,\n    height: input.height || null,\n    bitrateKbps: input.bitrate ? Math.round(input.bitrate / 1000) : null,\n    sizeBytes: input.sizeBytes || null,\n    ext: input.ext,\n    fileName: input.fileName,\n    directUrl: input.directUrl,\n    url: proxyUrl(input.directUrl, input.fileName),\n    watermarked: !!input.watermarked,\n  };\n}\n\nasync function fetchText(url, options) {\n  try {\n    const response = await fetch(url, Object.assign({ headers: { \"User-Agent\": DESKTOP_UA, \"Accept-Language\": \"en-US,en;q=0.9\" } }, options || {}));\n    if (!response.ok) return null;\n    return await response.text();\n  } catch (error) {\n    return null;\n  }\n}\n\nasync function fetchOEmbed(pageUrl) {\n  const text = await fetchText(TIKTOK + \"/oembed?url=\" + encodeURIComponent(pageUrl), {\n    headers: { \"User-Agent\": DESKTOP_UA, Accept: \"application/json\" },\n  });\n  if (!text) return null;\n  try {\n    const data = JSON.parse(text);\n    return {\n      title: pickString(data.title),\n      authorName: pickString(data.author_name),\n      authorUniqueId: pickString(data.author_unique_id) || (pickString(data.author_url) || \"\").split(\"@\")[1] || null,\n      thumbnail: pickString(data.thumbnail_url),\n    };\n  } catch (error) {\n    return null;\n  }\n}\n\nfunction parseEmbeddedJson(html) {\n  const universal = html.match(/\u003cscript id=\"__UNIVERSAL_DATA_FOR_REHYDRATION__\"[^>]*>([\\s\\S]*?)\u003c\\/script>/i);\n  if (universal) {\n    try {\n      const json = JSON.parse(universal[1]);\n      const item = json && json.__DEFAULT_SCOPE__ && json.__DEFAULT_SCOPE__[\"webapp.video-detail\"];\n      const itemStruct = item && item.itemInfo && item.itemInfo.itemStruct;\n      if (itemStruct && itemStruct.id) return itemStruct;\n    } catch (error) { /* ignore */ }\n  }\n  const sigi = html.match(/\u003cscript id=\"SIGI_STATE\"[^>]*>([\\s\\S]*?)\u003c\\/script>/i);\n  if (sigi) {\n    try {\n      const json = JSON.parse(sigi[1]);\n      const modules = json && json.ItemModule;\n      if (modules) {\n        const keys = Object.keys(modules);\n        if (keys.length && modules[keys[0]] && modules[keys[0]].id) return modules[keys[0]];\n      }\n    } catch (error) { /* ignore */ }\n  }\n  return null;\n}\n\nasync function fetchWebItem(canonicalUrl) {\n  const html = await fetchText(canonicalUrl, {\n    headers: {\n      \"User-Agent\": DESKTOP_UA,\n      Accept: \"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\",\n      Referer: TIKTOK + \"/\",\n      \"Sec-Fetch-Dest\": \"document\",\n      \"Sec-Fetch-Mode\": \"navigate\",\n    },\n  });\n  return html ? parseEmbeddedJson(html) : null;\n}\n\nasync function fetchMobileItem(videoId) {\n  const query =\n    \"aweme_id=\" + encodeURIComponent(videoId) +\n    \"&iid=7318518857994389254&device_id=7318517321748022790&channel=googleplay\" +\n    \"&app_name=musical_ly&version_code=300904&device_platform=android&device_type=Pixel%207&os_version=13\";\n  let text = null;\n  try {\n    const response = await fetch(\"https://api22-normal-c-useast2a.tiktokv.com/aweme/v1/feed/?\" + query, {\n      headers: { \"User-Agent\": ANDROID_UA, Accept: \"application/json\" },\n    });\n    if (!response.ok) return null;\n    text = await response.text();\n  } catch (error) {\n    return null;\n  }\n  if (!text) return null;\n  try {\n    const json = JSON.parse(text);\n    const aweme = (json.aweme_list && json.aweme_list[0]) || json.aweme_detail;\n    return aweme && (aweme.aweme_id || aweme.id) ? aweme : null;\n  } catch (error) {\n    return null;\n  }\n}\n\nasync function buildVariants(item, base, mobile) {\n  const video = item.video || {};\n  const variants = [];\n  const seen = {};\n  const gears = (mobile ? video.bit_rate : video.bitrateInfo) || [];\n\n  for (let i = 0; i \u003c gears.length; i++) {\n    const gear = gears[i] || {};\n    const addr = mobile ? gear.play_addr : gear.PlayAddr;\n    const url = preferPlayableUrl([].concat((addr && addr.UrlList) || [], (addr && addr.url_list) || []));\n    if (!url) continue;\n    const height = pickNumber(mobile ? gear.play_addr && gear.play_addr.height : addr && addr.Height, mobile ? gear.height : addr && addr.Height);\n    const width = pickNumber(mobile ? gear.play_addr && gear.play_addr.width : addr && addr.Width, mobile ? gear.width : addr && addr.Width);\n    const bitrate = pickNumber(gear.bitrate, gear.Bitrate);\n    const size = pickNumber(mobile ? gear.play_addr && gear.play_addr.data_size : addr && addr.DataSize);\n    // Vertical videos: the short side is what people call the quality (1080p).\n    const quality = width && height ? Math.min(width, height) : height;\n    const key = String(quality || height || 0);\n    if (seen[key]) continue;\n    seen[key] = true;\n    const bits = [];\n    if (width && height) bits.push(width + \" x \" + height);\n    if (bitrate) bits.push(Math.round(bitrate / 1000) + \" kbps\");\n    if (size) bits.push((size / 1048576).toFixed(1) + \" MB\");\n    variants.push(variant({\n      id: \"gear-\" + key,\n      kind: \"video\",\n      label: quality ? quality + \"p\" : \"Original\",\n      detail: bits.join(\" \\u00B7 \"),\n      width: width,\n      height: height,\n      bitrate: bitrate,\n      sizeBytes: size,\n      ext: \"mp4\",\n      fileName: base + \".mp4\",\n      directUrl: url,\n    }));\n  }\n\n  const playAddr = preferPlayableUrl([video.playAddr].concat((video.play_addr && video.play_addr.url_list) || []));\n  if (playAddr && variants.length === 0) {\n    // only used as a fallback when TikTok gave us no quality list at all\n    variants.push(variant({\n      id: \"play\",\n      kind: \"video\",\n      label: \"Standard MP4\",\n      detail: \"Direct play address (usually no watermark)\",\n      height: pickNumber(video.height, video.play_addr && video.play_addr.height),\n      width: pickNumber(video.width, video.play_addr && video.play_addr.width),\n      bitrate: pickNumber(video.bitrate),\n      ext: \"mp4\",\n      fileName: base + \".mp4\",\n      directUrl: playAddr,\n    }));\n  }\n\n  const downloadAddr = preferPlayableUrl([video.downloadAddr].concat((video.download_addr && video.download_addr.url_list) || []));\n  // Only offer the watermarked original when the address actually responds.\n  if (downloadAddr && (await isReachable(downloadAddr))) {\n    variants.push(variant({\n      id: \"download\",\n      kind: \"video\",\n      label: \"Original (watermarked)\",\n      detail: \"TikTok's own download address\",\n      height: pickNumber(video.height),\n      width: pickNumber(video.width),\n      ext: \"mp4\",\n      fileName: base + \"-watermarked.mp4\",\n      directUrl: downloadAddr,\n      watermarked: true,\n    }));\n  }\n\n  variants.sort(function (a, b) {\n    return Math.min(b.width || 0, b.height || 0) - Math.min(a.width || 0, a.height || 0) ||\n      (b.bitrateKbps || 0) - (a.bitrateKbps || 0);\n  });\n  return variants;\n}\n\nfunction buildAudio(item, base, mobile) {\n  const music = item.music || {};\n  const url = preferPlayableUrl([music.playUrl].concat((music.play_url && music.play_url.url_list) || []));\n  if (!url) return null;\n  const detail = [pickString(music.title), pickString(music.authorName, music.author)].filter(Boolean).join(\" \\u00B7 \") || \"Original sound\";\n  return variant({\n    id: \"music\",\n    kind: \"audio\",\n    label: \"Audio only (MP3)\",\n    detail: detail,\n    bitrate: pickNumber(music.bitrate),\n    ext: \"mp3\",\n    fileName: base + \"-audio.mp3\",\n    directUrl: url,\n  });\n}\n\nasync function resolveTikTok(rawUrl) {\n  let candidate = String(rawUrl || \"\").trim();\n  if (!candidate) return { ok: false, error: \"Paste a TikTok link first.\", hint: \"\" };\n  if (!/^https?:\\/\\//i.test(candidate)) candidate = \"https://\" + candidate;\n\n  let parsed;\n  try {\n    parsed = new URL(candidate);\n  } catch (error) {\n    return { ok: false, error: \"That does not look like a valid URL.\", hint: \"Copy the link straight from the TikTok app.\" };\n  }\n\n  const host = parsed.hostname.replace(/^www\\./i, \"\").toLowerCase();\n  if (host.indexOf(\"tiktok.com\") === -1) {\n    return { ok: false, error: \"Only tiktok.com links are supported.\", hint: \"Example: https://www.tiktok.com/@user/video/123456789\" };\n  }\n\n  let username = (parsed.pathname.match(/^\\/@([^/]+)/) || [])[1] || null;\n  let videoId = extractId(parsed.pathname);\n  const notes = [];\n\n  if (!videoId) {\n    // Short link: follow the redirect (Workers follows redirects by default).\n    try {\n      const response = await fetch(parsed.toString(), { method: \"GET\", headers: { \"User-Agent\": DESKTOP_UA }, redirect: \"follow\" });\n      const finalUrl = response.url || \"\";\n      if (finalUrl) {\n        const finalParsed = new URL(finalUrl);\n        videoId = extractId(finalParsed.pathname);\n        username = username || (finalParsed.pathname.match(/^\\/@([^/]+)/) || [])[1] || null;\n      }\n    } catch (error) { /* handled below */ }\n  }\n\n  if (!videoId) {\n    // Last resort: TikTok's public oEmbed accepts short links too and returns\n    // the numeric video id (embed_product_id) plus the author handle.\n    const shortOembed = await fetchOEmbed(parsed.toString());\n    if (shortOembed && shortOembed.videoId) {\n      videoId = shortOembed.videoId;\n      username = username || shortOembed.authorUniqueId || null;\n    }\n  }\n\n  if (!videoId) {\n    return { ok: false, error: \"Could not find a video ID in that link.\", hint: \"Use the full link (https://www.tiktok.com/@user/video/123...) or a vm.tiktok.com short link.\" };\n  }\n\n  const pageUrl = username ? TIKTOK + \"/@\" + username + \"/video/\" + videoId : TIKTOK + \"/embed/v2/\" + videoId;\n  const oembed = await fetchOEmbed(pageUrl);\n  const finalUsername = username || (oembed && oembed.authorUniqueId) || null;\n  const canonicalUrl = finalUsername ? TIKTOK + \"/@\" + finalUsername + \"/video/\" + videoId : pageUrl;\n\n  let item = finalUsername ? await fetchWebItem(canonicalUrl) : null;\n  let mobile = false;\n  if (!item) {\n    notes.push(\"TikTok's web page did not return video data for this request.\");\n    item = await fetchMobileItem(videoId);\n    mobile = true;\n  }\n\n  const title = pickString(item && item.desc) || (oembed && oembed.title) || \"TikTok video\";\n  const author = (item && item.author) || {};\n  const authorUniqueId = pickString(author.uniqueId, author.unique_id) || (oembed && oembed.authorUniqueId) || \"unknown\";\n  const authorNickname = pickString(author.nickname, author.unique_id) || (oembed && oembed.authorName) || authorUniqueId;\n  const base = safeFileBase(authorUniqueId + \"-\" + title, \"tiktok-\" + videoId);\n\n  if (!item) {\n    if (oembed) {\n      return {\n        ok: true,\n        source: \"oembed\",\n        videoId: videoId,\n        pageUrl: canonicalUrl,\n        title: title,\n        cover: (oembed && oembed.thumbnail) || null,\n        durationSeconds: null,\n        createdAt: null,\n        author: { uniqueId: authorUniqueId, nickname: authorNickname, avatar: null },\n        stats: { plays: null, likes: null, comments: null, shares: null },\n        music: { title: null, author: (oembed && oembed.authorName) || null, durationSeconds: null },\n        variants: [],\n        best: null,\n        audio: null,\n        notes: notes.concat([\"Only public metadata could be read right now, so no media file is available.\"]),\n      };\n    }\n    return {\n      ok: false,\n      error: \"TikTok refused this request.\",\n      hint: \"TikTok blocks some Cloudflare IPs and rotates its page structure. Wait a minute and try again, or deploy to a different Cloudflare account.\",\n    };\n  }\n\n  const stats = item.stats || item.statistics || {};\n  const music = item.music || {};\n  const variants = await buildVariants(item, base, mobile);\n  const audio = buildAudio(item, base, mobile);\n\n  if (!variants.length) {\n    return {\n      ok: false,\n      error: \"TikTok returned metadata but no playable file for this video.\",\n      hint: \"The video may be private, deleted, age restricted or region locked. Only public videos work.\",\n    };\n  }\n\n  return {\n    ok: true,\n    source: mobile ? \"mobile\" : \"web\",\n    videoId: videoId,\n    pageUrl: canonicalUrl,\n    title: title,\n    cover: pickString(item.video && (item.video.originCover || item.video.cover), item.video && item.video.cover && item.video.cover.url_list && item.video.cover.url_list[0], oembed && oembed.thumbnail),\n    durationSeconds: pickNumber(item.video && item.video.duration, music.duration),\n    createdAt: pickNumber(item.createTime, item.create_time) ? new Date(pickNumber(item.createTime, item.create_time) * 1000).toISOString() : null,\n    author: {\n      uniqueId: authorUniqueId,\n      nickname: authorNickname,\n      avatar: pickString(author.avatarLarger, author.avatarMedium, author.avatarThumb && author.avatarThumb.url_list && author.avatarThumb.url_list[0]),\n    },\n    stats: {\n      plays: pickNumber(stats.playCount, stats.play_count),\n      likes: pickNumber(stats.diggCount, stats.digg_count),\n      comments: pickNumber(stats.commentCount, stats.comment_count),\n      shares: pickNumber(stats.shareCount, stats.share_count),\n    },\n    music: {\n      title: pickString(music.title) || \"Original sound\",\n      author: pickString(music.authorName, music.author),\n      durationSeconds: pickNumber(music.duration),\n    },\n    variants: variants,\n    best: variants[0],\n    audio: audio,\n    notes: notes,\n  };\n}\n\n/* POST /api/resolve ------------------------------------------------------ */\nexport async function onRequestPost(context) {\n  const request = context.request;\n  let body = {};\n  try {\n    body = await request.json();\n  } catch (error) {\n    return reply({ ok: false, error: \"Invalid JSON body.\", hint: \"\" }, 400);\n  }\n  const url = typeof body.url === \"string\" ? body.url : \"\";\n  if (!url.trim()) return reply({ ok: false, error: \"Paste a TikTok link first.\", hint: \"\" }, 400);\n\n  const result = await resolveTikTok(url);\n  return reply(result, result.ok ? 200 : 422);\n}\n\n/* GET /api/resolve -> tiny health/help check ---------------------------- */\nexport async function onRequestGet() {\n  return reply({ ok: true, usage: 'POST { \"url\": \"https://www.tiktok.com/@user/video/123...\" }' });\n}\n"},{"path":"functions/api/media.js","content":"/* =====================================================================\n   /api/media  -  Cloudflare Pages Function (the download proxy)\n   ---------------------------------------------------------------------\n   TikTok's CDN rejects browser requests that miss the Referer header, so\n   the file is fetched here (with the right headers) and streamed to the\n   visitor with a Content-Disposition: attachment header.\n\n   Query string:\n     u  = the TikTok CDN url (url-encoded)\n     f  = the file name to save as\n     dl = 1 download (default) / 0 inline (used by the \u003cvideo> preview)\n   ===================================================================== */\n\nconst DESKTOP_UA =\n  \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36\";\n\nconst ALLOWED = /\\.(tiktok\\.com|tiktokcdn\\.com|tiktokcdn-us\\.com|tiktokcdn-eu\\.com|akamaized\\.net|bytedance\\.com|byteoversea\\.com|ibyteimg\\.com|muscdn\\.com)$/;\n\nfunction sanitize(name) {\n  const cleaned = String(name || \"\").replace(/[\\\\/:*?\"\u003c>|\\r\\n]+/g, \"\").trim();\n  return (cleaned || \"tiktok-video.mp4\").slice(0, 120);\n}\n\nexport async function onRequestGet(context) {\n  const request = context.request;\n  const requestUrl = new URL(request.url);\n  const target = requestUrl.searchParams.get(\"u\");\n  const fileName = sanitize(requestUrl.searchParams.get(\"f\"));\n  const inline = requestUrl.searchParams.get(\"dl\") === \"0\";\n\n  if (!target) return new Response(\"Missing media URL.\", { status: 400 });\n\n  let parsed;\n  try {\n    parsed = new URL(target);\n  } catch (error) {\n    return new Response(\"Invalid media URL.\", { status: 400 });\n  }\n\n  const host = parsed.hostname.toLowerCase();\n  if (host.indexOf(\"tiktok.com\") === -1 && !ALLOWED.test(host)) {\n    return new Response(\"This proxy only streams TikTok media hosts.\", { status: 400 });\n  }\n\n  const range = request.headers.get(\"range\");\n  const headers = {\n    \"User-Agent\": DESKTOP_UA,\n    Referer: \"https://www.tiktok.com/\",\n    Accept: \"*/*\",\n    \"Accept-Language\": \"en-US,en;q=0.9\",\n  };\n  if (range) headers.Range = range;\n\n  let upstream;\n  try {\n    upstream = await fetch(parsed.toString(), { headers: headers, redirect: \"follow\" });\n  } catch (error) {\n    return new Response(\"Could not reach TikTok's media server. Resolve the link again.\", { status: 504 });\n  }\n\n  if (!upstream.ok && upstream.status !== 206) {\n    return new Response(\n      \"TikTok's media server refused the download (HTTP \" + upstream.status + \"). Signed links expire fast - resolve the video again and download right away.\",\n      { status: 502 }\n    );\n  }\n\n  const out = new Headers();\n  const type = upstream.headers.get(\"content-type\");\n  out.set(\"content-type\", type && type !== \"application/octet-stream\" ? type : /\\.mp3$/i.test(fileName) ? \"audio/mpeg\" : \"video/mp4\");\n  const length = upstream.headers.get(\"content-length\");\n  if (length) out.set(\"content-length\", length);\n  const contentRange = upstream.headers.get(\"content-range\");\n  if (contentRange) out.set(\"content-range\", contentRange);\n  out.set(\"accept-ranges\", upstream.headers.get(\"accept-ranges\") || \"bytes\");\n  out.set(\"cache-control\", \"no-store\");\n  if (!inline) out.set(\"content-disposition\", 'attachment; filename=\"' + fileName + '\"');\n\n  return new Response(upstream.body, { status: upstream.status === 206 ? 206 : 200, headers: out });\n}\n"},{"path":"worker.js","content":"/* =====================================================================\n   worker.js  -  Cloudflare Workers entry point (static assets + API)\n   ---------------------------------------------------------------------\n   Cloudflare serves every file inside public/ as a static asset. Any\n   request that does NOT match a file (our two API routes) is handled here:\n\n     POST /api/resolve  -> functions/api/resolve.js  (read TikTok, return JSON)\n     GET  /api/media    -> functions/api/media.js    (stream the file)\n\n   The handlers are shared with Cloudflare Pages, so you can deploy this\n   project either way without touching any code.\n   ===================================================================== */\n\nimport { onRequestPost as resolvePost, onRequestGet as resolveGet } from \"./functions/api/resolve.js\";\nimport { onRequestGet as mediaGet } from \"./functions/api/media.js\";\n\nconst JSON_HEADERS = { \"content-type\": \"application/json; charset=utf-8\" };\n\nexport default {\n  async fetch(request) {\n    const url = new URL(request.url);\n    const path = url.pathname.replace(/\\/+$/, \"\") || \"/\";\n\n    if (path === \"/api/resolve\") {\n      if (request.method === \"POST\") return resolvePost({ request });\n      return resolveGet({ request });\n    }\n\n    if (path === \"/api/media\") return mediaGet({ request });\n\n    return new Response(JSON.stringify({ ok: false, error: \"Not found.\" }), {\n      status: 404,\n      headers: JSON_HEADERS,\n    });\n  },\n};\n"},{"path":"wrangler.toml","content":"# ---------------------------------------------------------------------\n# Cloudflare WORKERS configuration  (recommended way to deploy this)\n#\n#   local:   npx wrangler dev        ->  http://localhost:8787\n#   deploy:  npx wrangler deploy\n#\n# Everything in public/ is served as a static asset, and any request that\n# is not a file (/api/resolve, /api/media) is handled by worker.js.\n# ---------------------------------------------------------------------\nname = \"tokdrop\"\nmain = \"worker.js\"\ncompatibility_date = \"2025-01-01\"\n\n[assets]\ndirectory = \"./public\"\n\n# ---------------------------------------------------------------------\n# Deploying as Cloudflare PAGES instead? Nothing to change in the code:\n#   local:   npx wrangler pages dev public --port 8788\n#   deploy:  npx wrangler pages deploy public\n# Pages reads the functions/ folder automatically. In the Pages build\n# settings use: build command (empty), build output directory: public.\n# ---------------------------------------------------------------------\n"},{"path":"package.json","content":"{\n  \"name\": \"tiktok-downloader\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \"description\": \"Sleek, dependency-free TikTok video downloader for Cloudflare Pages\",\n  \"scripts\": {\n    \"dev\": \"npx wrangler dev\",\n    \"deploy\": \"npx wrangler deploy\",\n    \"dev:pages\": \"npx wrangler pages dev public --port 8788\",\n    \"deploy:pages\": \"npx wrangler pages deploy public\"\n  }\n}"},{"path":".gitignore","content":"node_modules/\n.wrangler/\n.dev.vars\n.DS_Store\n*.log\n"},{"path":"README.md","content":"# TokDrop — TikTok downloader for Cloudflare Workers/Pages\n\nPaste a TikTok link → get the video (and the audio). No third-party API, no\nAPI key, no paid service: the retrieval runs on **your own Cloudflare\ndeployment**.\n\nWorks on **Cloudflare Workers (static assets)** and on **Cloudflare Pages** —\nsame code, same files, you just pick the hosting model in the dashboard.\n\n## 0. Quick start (no tools installed)\n\n1. Unzip the download.\n2. Open **`public/deploy.html`** in your browser.\n3. Set your background image, music, logo, title and accent colour.\n4. Paste a GitHub token + repository name → **Create repo & push**.\n5. Connect the repo to Cloudflare (Workers: deploy command `npx wrangler deploy`,\n   Pages: build output directory `public`).\n\nEverything below is the same thing explained in detail.\n\n## 1. How it works (the whole architecture)\n\n```\nBrowser (public/ static assets)\n  app.js  ──POST /api/resolve──▶  worker.js  (Cloudflare Worker entry point)\n                                       └─▶ functions/api/resolve.js\n                                       │\n                                       ├─ follow vm.tiktok.com redirect\n                                       ├─ tiktok.com/oembed        (public metadata)\n                                       ├─ tiktok.com/@user/video/N (page JSON: qualities + music)\n                                       └─ TikTok mobile feed       (fallback)\n                                       │\n  \u003ca download=\"/api/media?...\">◀────── JSON: title, author, duration, qualities, audio\n                                       │\n  /api/media?u=...&f=...  ──▶ worker.js ──▶ functions/api/media.js\n                                       └─ fetches the CDN file WITH the\n                                          Referer: https://www.tiktok.com/ header\n                                          and streams it back as an attachment\n```\n\n**Why the proxy?** TikTok's CDN answers `403` to browser requests that do not\ncarry a `Referer: https://www.tiktok.com/` header, so a plain link to the CDN\nfile cannot work. The Worker adds that header for you.\n\n**Workers vs Pages:** `wrangler.toml` points at `worker.js` and serves\n`public/` as static assets (Workers). If you deploy as Pages instead,\nCloudflare reads the `functions/` folder and creates the same two routes —\n`worker.js` is simply ignored.\n\n## 2. Every file and what it does\n\n| File | What it does | Do you edit it? |\n| --- | --- | --- |\n| `public/deploy.html` | **One-page builder**: visual config editor + \"Create repo & push\" button that talks to the GitHub API straight from your browser. Open it after unzipping - no server, no Node, no git needed. | it is a tool, not the site |\n| `public/config.js` | **All customisation**: site title, logo, accent colour, background image/opacity/blur/position/overlay, background music | ✅ yes, this one |\n| `public/index.html` | The page structure (input, button, preview, download list) | rarely |\n| `public/styles.css` | The whole design (dark + light theme, mobile first) | optional |\n| `public/app.js` | Loading states, calls `/api/resolve`, renders preview + buttons, music + theme buttons | no |\n| `public/robots.txt` | Keeps the site out of search engines | optional |\n| `worker.js` | Cloudflare **Workers** entry point: routes `/api/resolve` and `/api/media` to the shared handlers | no |\n| `functions/api/resolve.js` | Server-side TikTok retrieval, returns JSON metadata + download variants (used by Workers *and* Pages) | only if TikTok changes its markup |\n| `functions/api/media.js` | Streams the media file with the right headers | no |\n| `wrangler.toml` | Cloudflare Workers config: `worker.js` + static assets from `public/` | optional (project name) |\n| `package.json` | `npm run dev` / `npm run deploy` helpers (no dependencies) | no |\n\n## 3. Customise it (one file: `public/config.js`)\n\n```js\nwindow.SITE_CONFIG = {\n  siteTitle: \"My Downloader\",          // site name\n  tagline: \"Paste a TikTok link.\",\n  logoUrl: \"https://example.com/logo.png\",\n  accentColor: \"#22d3ee\",              // any CSS colour\n  background: {\n    imageUrl: \"https://example.com/bg.jpg\", // \"\" = built-in gradient\n    opacity: 0.9,                       // 0 – 1\n    blur: 4,                            // px\n    position: \"center\",                 // CSS background-position\n    overlayDarkness: 0.55               // 0 – 0.95\n  },\n  music: { enabled: true, url: \"https://example.com/song.mp3\", volume: 0.35, loop: true }\n};\n```\n\n## 4. Run it locally\n\n```bash\nnpm run dev          # Cloudflare Workers  ->  http://localhost:8787\nnpm run dev:pages    # Cloudflare Pages   ->  http://localhost:8788\n```\n\nBoth commands serve `public/` and expose `/api/resolve` + `/api/media`.\nNo `npm install` needed — the project has no dependencies.\n\n## 5. Put it on GitHub\n\n**Option A — the built-in button (easiest).** Open `public/deploy.html` from the\nunzipped download (double-click it). It has the full config editor and a\n**Create repo & push** button that talks to the GitHub REST API directly from\nyour browser. Paste a token, pick a repository name, done.\n\n**Option B — with the GitHub API by hand (no git installed).** Generate a token at\n\u003chttps://github.com/settings/tokens>:\n\n* Classic token: tick **repo** (and **workflow** if you add Actions later).\n* Fine-grained token: give it *Administration: write* (to create the repo) and\n  *Contents: write* (to push files).\n\nThen:\n\n```bash\ncurl -X POST https://api.github.com/user/repos \\\n  -H \"Authorization: Bearer YOUR_TOKEN\" \\\n  -H \"Accept: application/vnd.github+json\" \\\n  -d '{\"name\":\"tokdrop\",\"private\":true,\"description\":\"TikTok downloader on Cloudflare Pages\"}'\n```\n\nThe easiest path is Option A above: `public/deploy.html` does all of this for\nyou (it also handles GitHub's \"Git Repository is empty.\" quirk by creating the\ninitial commit for you).\n\n**Option C — plain git:**\n\n```bash\ngit init -b main\ngit add .\ngit commit -m \"TikTok downloader for Cloudflare Pages\"\ngit remote add origin https://github.com/YOUR_NAME/tokdrop.git\ngit push -u origin main\n```\n\n## 6. Connect the repo to Cloudflare\n\nBoth hosting models work with these exact files. Pick one:\n\n### Option A — Cloudflare Workers (static assets, recommended)\n\n1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Workers** tab →\n   **Import a repository** (or \"Create Worker\" → connect Git).\n2. Authorise GitHub and select the repository + the `main` branch.\n3. Build settings:\n\n   | Setting | Value |\n   | --- | --- |\n   | Root directory | / (leave empty) |\n   | Build command | *(leave empty — there is nothing to build and no dependency to install)* |\n   | Deploy command | `npx wrangler deploy` |\n\n4. **Save and Deploy**. Live on `https://\u003cname>.\u003cyour-subdomain>.workers.dev`.\n\n`wrangler.toml` already declares `main = \"worker.js\"` and\n`assets.directory = \"./public\"`, so Cloudflare serves the site as static assets\nand sends `/api/resolve` + `/api/media` to `worker.js`.\n\n### Option B — Cloudflare Pages\n\n1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Pages** tab →\n   **Connect to Git**.\n2. Authorise GitHub and select the repository.\n3. Build settings:\n\n   | Setting | Value |\n   | --- | --- |\n   | Project name | anything you like |\n   | Production branch | `main` |\n   | Framework preset | **None** |\n   | Build command | *(leave empty)* |\n   | Build output directory | `public` |\n   | Root directory | *(leave empty — the repo root, so `functions/` is found)* |\n\n4. **Save and Deploy**. Cloudflare uploads `public/` and turns\n   `functions/api/*.js` into the same `/api/*` endpoints automatically.\n\nEither way: every future `git push` to `main` redeploys by itself, and a\ncustom domain can be attached from the project's **Settings → Domains** page.\n\n## 7. Troubleshooting\n\n| Symptom | Fix |\n| --- | --- |\n| \"Git Repository is empty.\" while pushing | Normal for a brand-new repo: `deploy.html` (and the control panel) create the initial commit for you automatically. If you push by hand, first add a file on github.com (Add file → Create new file). |\n| `/api/resolve` returns 404 | Workers: check that `wrangler.toml` has `main = \"worker.js\"` and `[assets] directory = \"./public\"`. Pages: the `functions/` folder must be in the repo root and the build output directory must be `public`. |\n| \"TikTok refused this request\" | TikTok blocks some Cloudflare/datacenter IPs and rotates its markup. Retry later; the code already tries three different first-party methods. |\n| \"media server refused the download (HTTP 403)\" | Signed CDN links expire fast: resolve the link again and download immediately. |\n| Private / deleted / region-locked video | Not downloadable — the site shows a clear error instead of pretending it worked. |\n| Music does not start | Browsers block autoplay; click the ♫ button in the header. Check that `music.url` is a direct audio link. |\n\n## 8. Legal\n\nDownload only content you own or are allowed to use. Respect TikTok's Terms of\nService and creators' copyright; do not use this to redistribute other people's\nwork. This project only reads **public** data from TikTok's own endpoints and\ncontains no third-party or paid API.\n"}]</script>
+
+  <script>
+  (function () {
+    "use strict";
+    var FILES = [];
+    try { FILES = JSON.parse(document.getElementById("project-files").textContent) || []; } catch (e) { FILES = []; }
+    var DEFAULT_CONFIG_PATH = "public/config.js";
+
+    function $(id) { return document.getElementById(id); }
+    function log(message) {
+      var box = $("log");
+      box.hidden = false;
+      box.textContent += message + "\n";
+      box.scrollTop = box.scrollHeight;
+    }
+    function setStatus(text) {
+      $("status").hidden = false;
+      $("statusText").innerHTML = "<strong>" + text + "</strong>";
+    }
+    function showError(title, text) {
+      $("errorTitle").textContent = title;
+      $("errorText").textContent = text || "";
+      $("errorBox").hidden = false;
+    }
+    function toBase64(text) {
+      return btoa(unescape(encodeURIComponent(text)));
+    }
+
+    /* ---------------- theme ---------------- */
+    (function () {
+      var saved = null;
+      try { saved = window.localStorage.getItem("theme"); } catch (e) { saved = null; }
+      var theme = saved || "dark";
+      document.documentElement.setAttribute("data-theme", theme);
+      $("themeBtn").addEventListener("click", function () {
+        theme = theme === "light" ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", theme);
+        try { window.localStorage.setItem("theme", theme); } catch (e) {}
+      });
+    })();
+
+    /* ---------------- switches ---------------- */
+    function bindSwitch(id) {
+      var el = $(id);
+      el.addEventListener("click", function () { el.classList.toggle("on"); });
+    }
+    bindSwitch("musicEnabled");
+    bindSwitch("musicLoop");
+    bindSwitch("isPrivate");
+    $("isPrivate").addEventListener("click", function () {
+      $("visibilityLabel").textContent = $("isPrivate").classList.contains("on") ? "Private repository" : "Public repository";
+    });
+    $("accentPick").addEventListener("input", function () { $("accentColor").value = this.value; });
+
+    function on(id, out, suffix) {
+      $(id).addEventListener("input", function () { $(out).textContent = this.value + (suffix || ""); });
+    }
+    on("bgOpacity", "bgOpacityOut");
+    on("bgBlur", "bgBlurOut", "px");
+    on("overlayDarkness", "overlayDarknessOut");
+    on("musicVolume", "musicVolumeOut");
+
+    /* ---------------- 1. config.js ---------------- */
+    function value(id) { return $(id).value; }
+    function switchOn(id) { return $(id).classList.contains("on"); }
+
+    function buildConfig() {
+      return "/* =====================================================================\n" +
+        "   CONFIG.JS  -  the only file you need to edit to change the site.\n" +
+        "   ===================================================================== */\n" +
+        "window.SITE_CONFIG = {\n" +
+        '  siteTitle: ' + JSON.stringify(value("siteTitle")) + ",\n" +
+        '  tagline: ' + JSON.stringify(value("tagline")) + ",\n" +
+        '  logoUrl: ' + JSON.stringify(value("logoUrl")) + ",\n" +
+        '  accentColor: ' + JSON.stringify(value("accentColor")) + ",\n" +
+        "  background: {\n" +
+        '    imageUrl: ' + JSON.stringify(value("bgImageUrl")) + ",\n" +
+        '    opacity: ' + Number(value("bgOpacity")) + ",\n" +
+        '    blur: ' + Number(value("bgBlur")) + ",\n" +
+        '    position: ' + JSON.stringify(value("bgPosition")) + ",\n" +
+        '    overlayDarkness: ' + Number(value("overlayDarkness")) + "\n" +
+        "  },\n" +
+        "  music: {\n" +
+        '    enabled: ' + switchOn("musicEnabled") + ",\n" +
+        '    url: ' + JSON.stringify(value("musicUrl")) + ",\n" +
+        '    volume: ' + Number(value("musicVolume")) + ",\n" +
+        '    loop: ' + switchOn("musicLoop") + "\n" +
+        "  }\n" +
+        "};\n";
+    }
+
+    function applyPreview() {
+      var root = document.documentElement;
+      root.style.setProperty("--accent", value("accentColor"));
+      root.style.setProperty("--bg-image", value("bgImageUrl") ? 'url("' + value("bgImageUrl") + '")' : "none");
+      root.style.setProperty("--bg-opacity", value("bgOpacity"));
+      root.style.setProperty("--bg-blur", value("bgBlur") + "px");
+      root.style.setProperty("--bg-pos", value("bgPosition"));
+      root.style.setProperty("--overlay", value("overlayDarkness"));
+      document.title = "Deploy " + value("siteTitle") + " — config & push to GitHub";
+    }
+    $("previewConfig").addEventListener("click", function () { applyPreview(); log("Preview applied to this page."); });
+    $("downloadConfig").addEventListener("click", function () {
+      var blob = new Blob([buildConfig()], { type: "text/javascript" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "config.js";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      log("config.js downloaded — drop it into the public/ folder.");
+    });
+
+    /* ---------------- 2. push to GitHub ---------------- */
+    var TOKEN = "";
+
+    function gh(path, method, body) {
+      return fetch("https://api.github.com" + path, {
+        method: method || "GET",
+        headers: {
+          Authorization: "Bearer " + TOKEN,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "Content-Type": "application/json"
+        },
+        body: body ? JSON.stringify(body) : undefined
+      }).then(function (response) {
+        return response.text().then(function (text) {
+          var data = null;
+          try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
+          return { ok: response.ok, status: response.status, data: data };
+        });
+      });
+    }
+
+    function filesToPush() {
+      var list = FILES.map(function (file) {
+        return file.path === DEFAULT_CONFIG_PATH ? { path: file.path, content: buildConfig() } : file;
+      });
+      // Include this builder page itself when it can be read over http(s).
+      return fetch("deploy.html", { cache: "no-store" })
+        .then(function (response) { return response.ok ? response.text() : null; })
+        .then(function (text) {
+          if (text && text.indexOf("project-files") !== -1) {
+            list.push({ path: "public/deploy.html", content: text });
+            log("Added public/deploy.html to the push.");
+          } else {
+            log("Note: deploy.html could not be read (opened from file://) - push it later from the GitHub web UI if you want it.");
+          }
+          return list;
+        })
+        .catch(function () {
+          log("Note: deploy.html was not added to the push.");
+          return list;
+        });
+    }
+
+    $("pushBtn").addEventListener("click", async function () {
+      TOKEN = value("token").trim();
+      var repoName = value("repoName").trim();
+      var owner = value("owner").trim();
+      var branch = value("branch").trim() || "main";
+      var isPrivate = switchOn("isPrivate");
+
+      $("errorBox").hidden = true;
+      $("log").hidden = false;
+      $("log").textContent = "";
+      $("pushBtn").disabled = true;
+
+      try {
+        if (!TOKEN) throw { message: "Paste a GitHub token first." };
+        if (!repoName) throw { message: "Choose a repository name." };
+
+        setStatus("Checking the token…");
+        var user = await gh("/user");
+        if (!user.ok) throw { message: user.status === 401 ? "That token is invalid or expired." : (user.data && user.data.message) || "Token check failed." };
+        var login = user.data.login;
+        log("Signed in as " + login);
+
+        setStatus("Creating the repository…");
+        var path = (owner ? "/orgs/" + owner : "/user") + "/repos";
+        var created = await gh(path, "POST", {
+          name: repoName,
+          private: isPrivate,
+          description: "TikTok video downloader for Cloudflare Pages (no third-party API)",
+          auto_init: true
+        });
+        var repoOwner = owner || login;
+        var repoCreated = created.ok;
+        if (created.ok) {
+          log("Repository " + repoOwner + "/" + repoName + " created.");
+        } else {
+          log("Repository create answered: " + ((created.data && created.data.message) || created.status));
+          var info = await gh("/repos/" + repoOwner + "/" + repoName);
+          if (!info.ok) throw { message: "Could not create or open " + repoOwner + "/" + repoName + ". " + ((created.data && created.data.message) || "") };
+          log("Using the existing repository " + repoOwner + "/" + repoName + ".");
+        }
+
+        var repoPath = "/repos/" + repoOwner + "/" + repoName;
+        var repoInfo = await gh(repoPath);
+        var defaultBranch = (repoInfo.data && repoInfo.data.default_branch) || branch;
+
+        async function headOf(name) {
+          var ref = await gh(repoPath + "/git/ref/heads/" + name);
+          if (!ref.ok || !ref.data || !ref.data.object) return null;
+          var sha = ref.data.object.sha;
+          var commit = await gh(repoPath + "/git/commits/" + sha);
+          return { sha: sha, tree: commit.data && commit.data.tree ? commit.data.tree.sha : null, exists: true };
+        }
+
+        setStatus("Reading the branch…");
+        var head = await headOf(branch);
+        if (!head) head = await headOf(defaultBranch);
+
+        if (!head) {
+          // Empty repository: the Contents API is the only way to create the
+          // first commit (the Git trees API answers "Git Repository is empty.").
+          setStatus("Initialising the empty repository…");
+          var readme = "";
+          for (var i = 0; i < FILES.length; i++) {
+            if (FILES[i].path.toLowerCase() === "readme.md") readme = FILES[i].content;
+          }
+          var boot = await gh(repoPath + "/contents/README.md", "PUT", {
+            message: "Initial commit",
+            branch: defaultBranch,
+            content: toBase64(readme || "# TikTok downloader\n")
+          });
+          if (!boot.ok) throw { message: "Could not initialise the repository: " + ((boot.data && boot.data.message) || boot.status) };
+          log("Initial commit created on " + defaultBranch + ".");
+          head = await headOf(defaultBranch);
+          if (head) head.exists = branch === defaultBranch;
+        }
+        if (!head) throw { message: "Could not find a branch to push to." };
+
+        setStatus("Uploading " + "the files…");
+        var files = await filesToPush();
+        var tree = files.map(function (file) {
+          return { path: file.path, mode: "100644", type: "blob", content: file.content };
+        });
+        var newTree = await gh(repoPath + "/git/trees", "POST", {
+          base_tree: head.tree || undefined,
+          tree: tree
+        });
+        if (!newTree.ok) throw { message: "Tree upload failed: " + ((newTree.data && newTree.data.message) || newTree.status) };
+        log("Tree created with " + files.length + " files.");
+
+        setStatus("Committing…");
+        var commit = await gh(repoPath + "/git/commits", "POST", {
+          message: "TikTok downloader for Cloudflare Pages",
+          tree: newTree.data.sha,
+          parents: [head.sha]
+        });
+        if (!commit.ok) throw { message: "Commit failed: " + ((commit.data && commit.data.message) || commit.status) };
+        log("Commit " + commit.data.sha.slice(0, 7) + " created.");
+
+        setStatus("Updating the branch…");
+        var moved = await gh(repoPath + "/git/refs/heads/" + branch, "PATCH", { sha: commit.data.sha, force: false });
+        if (!moved.ok) {
+          var ref = await gh(repoPath + "/git/refs", "POST", { ref: "refs/heads/" + branch, sha: commit.data.sha });
+          if (!ref.ok) throw { message: "Could not update the branch: " + ((ref.data && ref.data.message) || ref.status) };
+          log("Branch " + branch + " created.");
+        } else {
+          log("Branch " + branch + " updated.");
+        }
+
+        $("status").hidden = true;
+        $("pushBtn").disabled = false;
+        setStatus("Done");
+        $("statusText").innerHTML = "<strong>Done!</strong> " + files.length + " files pushed to " +
+          '<a href="https://github.com/' + repoOwner + '/' + repoName + '" target="_blank" rel="noreferrer">github.com/' + repoOwner + '/' + repoName + '</a>. Next: connect it to Cloudflare Pages (build output directory: public).';
+        $("status").hidden = false;
+      } catch (error) {
+        $("status").hidden = true;
+        $("pushBtn").disabled = false;
+        showError((error && error.message) || "Push failed.", "Check the token (classic tokens need the 'repo' scope), the repository name and your internet connection.");
+        log("ERROR: " + ((error && error.message) || error));
+      }
+    });
+  })();
+  </script>
+</body>
+</html>

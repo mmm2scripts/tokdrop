@@ -1,0 +1,12 @@
+{
+  "name": "tiktok-downloader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sleek, dependency-free TikTok video downloader for Cloudflare Pages",
+  "scripts": {
+    "dev": "npx wrangler dev",
+    "deploy": "npx wrangler deploy",
+    "dev:pages": "npx wrangler pages dev public --port 8788",
+    "deploy:pages": "npx wrangler pages deploy public"
+  }
+}
