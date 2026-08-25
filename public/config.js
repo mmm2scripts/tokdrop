@@ -29,7 +29,7 @@ window.SITE_CONFIG = {
     opacity: 0.9,
 
     /* blur in px (0 = sharp)                                          */
-    blur: 4,
+    blur: 6,
 
     /* any CSS background-position: "center", "top", "50% 20%" ...     */
     position: "center",
@@ -43,12 +43,12 @@ window.SITE_CONFIG = {
     /* CHANGE: set enabled to true and paste a direct .mp3 URL.        */
     /* Browsers block autoplay, so music starts on the first click     */
     /* of the music button in the top-right corner.                    */
-    enabled: false,
+    enabled: true,
 
     url: "",
 
     /* 0 = silent, 1 = full volume                                     */
-    volume: 0.35,
+    volume: 1,
 
     /* true = restart when the track finishes                          */
     loop: true
